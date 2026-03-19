@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         视频快捷键精简版（Enter / Shift+Enter / ZXC）
 // @namespace    local.codex.minimal-video-hotkeys
-// @version      0.1.0
+// @version      0.1.3
 // @description  仅保留 Enter 自动全屏播放、Shift+Enter 网页全屏、Z/X/C 倍速控制
 // @author       Codex
 // @match        *://*/*
@@ -18,6 +18,7 @@
     pageFsContainer: '__mini_vhk_pagefs_container__',
     pageFsChain: '__mini_vhk_pagefs_chain__',
     pageFsVideo: '__mini_vhk_pagefs_video__',
+    pageFsYoutube: '__mini_vhk_pagefs_youtube__',
     toast: '__mini_vhk_toast__'
   };
 
@@ -46,6 +47,11 @@
 
       .${CLASS.pageFsChain} {
         z-index: 2147483646 !important;
+        transform: none !important;
+        filter: none !important;
+        perspective: none !important;
+        contain: none !important;
+        overflow: visible !important;
       }
 
       .${CLASS.pageFsContainer} {
@@ -66,6 +72,37 @@
         height: 100% !important;
         max-width: 100% !important;
         max-height: 100% !important;
+        object-fit: contain !important;
+        background: #000 !important;
+      }
+
+      .${CLASS.pageFsContainer}.${CLASS.pageFsYoutube} {
+        display: block !important;
+        padding: 0 !important;
+      }
+
+      .${CLASS.pageFsContainer}.${CLASS.pageFsYoutube} .html5-video-container,
+      .${CLASS.pageFsContainer}.${CLASS.pageFsYoutube} .html5-video-player,
+      .${CLASS.pageFsContainer}.${CLASS.pageFsYoutube} .ytp-iv-video-content,
+      .${CLASS.pageFsContainer}.${CLASS.pageFsYoutube} .ytp-cued-thumbnail-overlay-image {
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+      }
+
+      .${CLASS.pageFsContainer}.${CLASS.pageFsYoutube} video,
+      .${CLASS.pageFsContainer}.${CLASS.pageFsYoutube} .html5-main-video {
+        position: absolute !important;
+        inset: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        max-width: 100% !important;
+        max-height: 100% !important;
+        left: 0 !important;
+        top: 0 !important;
+        margin: 0 !important;
+        transform: none !important;
         object-fit: contain !important;
         background: #000 !important;
       }
@@ -136,7 +173,7 @@
       if (!video) return;
       setActiveVideo(video);
       prevent(event);
-      toggleNativeFullscreenAndAutoplay(video);
+      ensureNativeFullscreenAndAutoplay(video);
       return;
     }
 
@@ -163,38 +200,72 @@
     event.preventDefault();
   }
 
-  function toggleNativeFullscreenAndAutoplay (video) {
-    const doc = document;
-    const inNativeFullscreen = !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
+  function ensureNativeFullscreenAndAutoplay (video) {
+    if (pageFullscreenState) {
+      exitPageFullscreen();
+    }
 
-    if (inNativeFullscreen) {
-      exitNativeFullscreen();
+    ensurePlayback(video);
+
+    if (isNativeFullscreenActive()) return;
+
+    if (trySiteNativeFullscreen(video)) {
       return;
     }
 
-    if (video.paused) {
-      try {
-        const p = video.play();
-        if (p && typeof p.catch === 'function') {
-          p.catch(() => {});
-        }
-      } catch (e) {}
-    }
-
     const container = getFullscreenContainer(video);
-    requestNativeFullscreen(container || video);
+    requestNativeFullscreen(container || video, video);
   }
 
-  function requestNativeFullscreen (el) {
-    if (!el) return;
-    const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
-    if (!fn) return;
+  function ensurePlayback (video) {
+    if (!video || (!video.paused && !video.ended)) return true;
+
+    if (trySitePlayback(video)) {
+      return true;
+    }
+
     try {
-      const p = fn.call(el);
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => {});
+      const p = video.play();
+      handleAsyncError(p, '播放失败');
+      return true;
+    } catch (error) {
+      console.warn('[mini-video-hotkeys] video.play failed', error);
+      showToast('播放失败');
+      return false;
+    }
+  }
+
+  function isNativeFullscreenActive () {
+    const doc = document;
+    return !!(doc.fullscreenElement || doc.webkitFullscreenElement || doc.mozFullScreenElement || doc.msFullscreenElement);
+  }
+
+  function requestNativeFullscreen (el, video) {
+    if (el) {
+      const fn = el.requestFullscreen || el.webkitRequestFullscreen || el.webkitRequestFullScreen || el.mozRequestFullScreen || el.msRequestFullscreen;
+      if (fn) {
+        try {
+          const p = fn.call(el);
+          handleAsyncError(p, '原生全屏被浏览器拦截');
+          return true;
+        } catch (error) {
+          console.warn('[mini-video-hotkeys] requestFullscreen failed', error);
+        }
       }
-    } catch (e) {}
+    }
+
+    const videoFn = video && (video.webkitEnterFullscreen || video.webkitEnterFullScreen);
+    if (typeof videoFn === 'function') {
+      try {
+        videoFn.call(video);
+        return true;
+      } catch (error) {
+        console.warn('[mini-video-hotkeys] webkitEnterFullscreen failed', error);
+      }
+    }
+
+    showToast('原生全屏失败');
+    return false;
   }
 
   function exitNativeFullscreen () {
@@ -203,9 +274,7 @@
     if (!fn) return;
     try {
       const p = fn.call(doc);
-      if (p && typeof p.catch === 'function') {
-        p.catch(() => {});
-      }
+      handleAsyncError(p, '退出原生全屏失败');
     } catch (e) {}
   }
 
@@ -217,7 +286,8 @@
 
     exitPageFullscreen();
 
-    const container = getFullscreenContainer(video);
+    const container = getPageFullscreenContainer(video);
+    const extraClasses = getPageFullscreenExtraClasses(container, video);
     const chain = [];
     let node = container;
     while (node && node.nodeType === 1 && node !== document.documentElement) {
@@ -229,19 +299,22 @@
       el.classList.add(CLASS.pageFsChain);
     }
     container.classList.add(CLASS.pageFsContainer);
+    for (const className of extraClasses) {
+      container.classList.add(className);
+    }
     video.classList.add(CLASS.pageFsVideo);
     document.documentElement.classList.add(CLASS.htmlPageFs);
     if (document.body) {
       document.body.classList.add(CLASS.bodyPageFs);
     }
 
-    pageFullscreenState = { video, container, chain };
+    pageFullscreenState = { video, container, chain, extraClasses };
   }
 
   function exitPageFullscreen () {
     if (!pageFullscreenState) return;
 
-    const { video, container, chain } = pageFullscreenState;
+    const { video, container, chain, extraClasses } = pageFullscreenState;
     if (chain) {
       for (const el of chain) {
         if (el && el.classList) {
@@ -251,6 +324,11 @@
     }
     if (container && container.classList) {
       container.classList.remove(CLASS.pageFsContainer);
+      if (extraClasses) {
+        for (const className of extraClasses) {
+          container.classList.remove(className);
+        }
+      }
     }
     if (video && video.classList) {
       video.classList.remove(CLASS.pageFsVideo);
@@ -301,6 +379,77 @@
     return Number(n.toFixed(1));
   }
 
+  function handleAsyncError (maybePromise, message) {
+    if (!maybePromise || typeof maybePromise.catch !== 'function') return;
+    maybePromise.catch((error) => {
+      console.warn(`[mini-video-hotkeys] ${message}`, error);
+      showToast(message);
+    });
+  }
+
+  function trySitePlayback (video) {
+    return tryYouTubePlayback(video);
+  }
+
+  function trySiteNativeFullscreen (video) {
+    return tryYouTubeNativeFullscreen(video);
+  }
+
+  function tryYouTubePlayback (video) {
+    if (!isYouTubeHost()) return false;
+
+    const player = getYouTubePlayer(video);
+    if (player && typeof player.playVideo === 'function') {
+      try {
+        player.playVideo();
+        return true;
+      } catch (error) {
+        console.warn('[mini-video-hotkeys] youtube player.playVideo failed', error);
+      }
+    }
+
+    const playButton = (player && player.querySelector('.ytp-play-button, .ytp-large-play-button')) || document.querySelector('.html5-video-player .ytp-play-button, .html5-video-player .ytp-large-play-button');
+    if (playButton instanceof HTMLElement) {
+      try {
+        playButton.click();
+        return true;
+      } catch (error) {
+        console.warn('[mini-video-hotkeys] youtube play button failed', error);
+      }
+    }
+
+    return false;
+  }
+
+  function tryYouTubeNativeFullscreen (video) {
+    if (!isYouTubeHost()) return false;
+
+    const player = getYouTubePlayer(video) || document;
+    const button = player.querySelector('.ytp-fullscreen-button') || document.querySelector('.html5-video-player .ytp-fullscreen-button');
+    if (!(button instanceof HTMLElement)) return false;
+
+    try {
+      button.click();
+      return true;
+    } catch (error) {
+      console.warn('[mini-video-hotkeys] youtube fullscreen button failed', error);
+      return false;
+    }
+  }
+
+  function isYouTubeHost () {
+    return /(^|\.)youtube\.com$/i.test(location.hostname) || /^youtu\.be$/i.test(location.hostname);
+  }
+
+  function getYouTubePlayer (video) {
+    if (!isYouTubeHost()) return null;
+    if (video && video.closest) {
+      const playerFromVideo = video.closest('#movie_player, .html5-video-player, ytd-player, #player, #ytd-player');
+      if (playerFromVideo) return playerFromVideo;
+    }
+    return document.querySelector('#movie_player, .html5-video-player, ytd-player, #player, #ytd-player');
+  }
+
   function showToast (message) {
     if (!document.body) return;
 
@@ -329,6 +478,9 @@
     const fromEvent = toVideoFromEvent(event);
     if (fromEvent && isUsableVideo(fromEvent)) return fromEvent;
 
+    const sitePrimary = getSitePrimaryVideo();
+    if (isConnectedVideo(sitePrimary)) return sitePrimary;
+
     if (activeVideo && isUsableVideo(activeVideo)) return activeVideo;
 
     const list = Array.from(document.querySelectorAll('video'));
@@ -346,7 +498,34 @@
       }
     }
 
-    return best;
+    return best || list.find(isConnectedVideo) || null;
+  }
+
+  function getSitePrimaryVideo () {
+    return getYouTubePrimaryVideo();
+  }
+
+  function getYouTubePrimaryVideo () {
+    if (!isYouTubeHost()) return null;
+
+    const selectors = [
+      '#movie_player video.html5-main-video',
+      '.html5-video-player video.html5-main-video',
+      '#movie_player video',
+      '.html5-video-player video',
+      'video.html5-main-video'
+    ];
+
+    for (const selector of selectors) {
+      const video = document.querySelector(selector);
+      if (video instanceof HTMLVideoElement) return video;
+    }
+
+    return null;
+  }
+
+  function isConnectedVideo (video) {
+    return video instanceof HTMLVideoElement && video.isConnected;
   }
 
   function isUsableVideo (video) {
@@ -409,6 +588,23 @@
     }
 
     return container;
+  }
+
+  function getPageFullscreenContainer (video) {
+    const siteContainer = getYouTubePageFullscreenContainer(video);
+    return siteContainer || getFullscreenContainer(video);
+  }
+
+  function getPageFullscreenExtraClasses (container, video) {
+    if (container && container === getYouTubePageFullscreenContainer(video)) {
+      return [CLASS.pageFsYoutube];
+    }
+    return [];
+  }
+
+  function getYouTubePageFullscreenContainer (video) {
+    if (!isYouTubeHost()) return null;
+    return getYouTubePlayer(video);
   }
 
   function toVideoFromEvent (event) {
