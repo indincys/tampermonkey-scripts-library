@@ -2,9 +2,9 @@
 // @name         NodeSeek Auto Nested Replies
 // @name:zh-CN   NodeSeek 自动楼中楼
 // @namespace    https://www.nodeseek.com/
-// @version      1.5.0
-// @description  Turn visible NodeSeek reply references into nested comment threads, show user rank/join age, auto-load next pages, and check in daily.
-// @description:zh-CN 在 NodeSeek 自动签到；帖子页自动整理楼中楼、展示用户等级与加入天数，并自动加载下一页评论。
+// @version      1.6.0
+// @description  Turn visible NodeSeek reply references into quiet annotation threads, show user rank/join age, auto-load next pages, and check in daily.
+// @description:zh-CN 在 NodeSeek 自动签到；帖子页以轻量旁注样式整理楼中楼、展示用户等级与加入天数，并自动加载下一页评论。
 // @author       Codex
 // @match        https://www.nodeseek.com/*
 // @icon         https://www.google.com/s2/favicons?domain=nodeseek.com
@@ -915,17 +915,40 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 5px;
-        margin: 8px 0 0 58px;
-        padding: 2px 8px;
-        border: 1px solid rgba(112, 125, 143, .26);
-        border-radius: 4px;
-        background: rgba(112, 125, 143, .065);
-        color: rgba(75, 88, 108, .92);
+        gap: 4px;
+        margin: 7px 0 0 58px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: rgba(75, 88, 108, .58);
         font-size: 11px;
-        line-height: 1.65;
+        font-weight: 600;
+        line-height: 1.6;
         cursor: pointer;
         user-select: none;
+      }
+
+      .ns-auto-nested-toggle::before {
+        content: "+";
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 12px;
+        height: 12px;
+        border: 1px solid rgba(112, 125, 143, .24);
+        border-radius: 999px;
+        color: rgba(75, 88, 108, .46);
+        font-size: 10px;
+        line-height: 1;
+      }
+
+      .ns-auto-nested-toggle[aria-expanded="true"]::before {
+        content: "-";
+      }
+
+      .ns-auto-nested-toggle:hover {
+        color: rgba(75, 88, 108, .86);
       }
 
       .ns-auto-page-status {
@@ -1104,9 +1127,9 @@
       }
 
       .ns-auto-nested-children {
-        margin: 8px 0 0 58px;
-        padding: 0 0 0 10px;
-        border-left: 2px solid rgba(112, 125, 143, .20);
+        margin: 7px 0 0 58px;
+        padding: 0 0 0 12px;
+        border-left: 1px solid rgba(112, 125, 143, .18);
         list-style: none;
       }
 
@@ -1117,49 +1140,48 @@
       .ns-auto-nested-children > .content-item {
         position: relative;
         width: auto !important;
-        margin: 7px 0 0 !important;
-        padding: 7px 8px 7px 10px !important;
+        margin: 5px 0 0 !important;
+        padding: 4px 0 5px 10px !important;
         border: 0;
-        border-radius: 5px;
-        background: rgba(112, 125, 143, .035);
+        border-radius: 0;
+        background: transparent;
         box-sizing: border-box;
       }
 
       .ns-auto-nested-children > .content-item::before {
         content: "";
         position: absolute;
-        left: -11px;
-        top: 19px;
-        width: 9px;
+        left: -13px;
+        top: 14px;
+        width: 10px;
         height: 1px;
-        background: rgba(112, 125, 143, .20);
+        background: rgba(112, 125, 143, .16);
       }
 
       .ns-auto-nested-children > .content-item > .nsk-content-meta-info {
-        min-height: 30px;
-        align-items: center;
+        display: flex !important;
+        min-height: 0;
+        align-items: baseline;
+        gap: 6px;
+        margin: 0 0 2px !important;
+        color: rgba(75, 88, 108, .66);
       }
 
       .ns-auto-nested-children > .content-item > .nsk-content-meta-info .avatar-wrapper {
-        width: 32px !important;
-        min-width: 32px !important;
-        margin-right: 8px !important;
-      }
-
-      .ns-auto-nested-children > .content-item .avatar-normal {
-        width: 28px !important;
-        height: 28px !important;
+        display: none !important;
       }
 
       .ns-auto-nested-children > .content-item .post-content {
-        margin: 4px 0 0 40px !important;
+        margin: 0 !important;
         padding: 0 !important;
-        font-size: 13px;
-        line-height: 1.65;
+        color: rgba(36, 42, 52, .92);
+        font-size: 13.5px;
+        line-height: 1.7;
+        overflow-wrap: anywhere;
       }
 
       .ns-auto-nested-children > .content-item .post-content p {
-        margin: 0 0 6px;
+        margin: 0 0 4px;
       }
 
       .ns-auto-nested-children > .content-item .post-content p:last-child {
@@ -1167,41 +1189,60 @@
       }
 
       .ns-auto-nested-children > .content-item .author-name {
-        font-size: 13px;
-        font-weight: 600;
+        color: rgba(36, 42, 52, .78);
+        font-size: 12px;
+        font-weight: 650;
       }
 
       .ns-auto-nested-children > .content-item .ns-auto-user-profile-badge {
-        padding: 0 5px;
+        margin-left: 4px;
+        padding: 0 4px;
+        border-color: rgba(112, 125, 143, .22);
+        background: transparent;
+        color: rgba(75, 88, 108, .58);
+        box-shadow: none;
         font-size: 10px;
-        line-height: 1.45;
+        font-weight: 600;
+        line-height: 1.35;
+        opacity: .82;
       }
 
-      .ns-auto-nested-children > .content-item .role-tag {
-        transform: scale(.9);
-        transform-origin: left center;
+      .ns-auto-nested-children > .content-item .ns-auto-user-profile-badge:is([data-rank="6"], [data-rank="7"], [data-rank="8"], [data-rank="9"]) {
+        border-color: rgba(180, 83, 9, .32);
+        color: rgba(138, 75, 10, .82);
+      }
+
+      .ns-auto-nested-children > .content-item .role-tag,
+      .ns-auto-nested-children > .content-item .nsk-badge:not(.ns-auto-user-profile-badge),
+      .ns-auto-nested-children > .content-item [class*="medal"],
+      .ns-auto-nested-children > .content-item [class*="honor"],
+      .ns-auto-nested-children > .content-item [class*="decoration"] {
+        display: none !important;
       }
 
       .ns-auto-nested-children > .content-item .content-info,
       .ns-auto-nested-children > .content-item .floor-link {
+        color: rgba(75, 88, 108, .42);
         font-size: 11px;
-        opacity: .68;
+        opacity: 1;
+      }
+
+      .ns-auto-nested-children > .content-item .floor-link-wrapper {
+        margin-left: auto;
       }
 
       .ns-auto-nested-children > .content-item .comment-menu {
+        display: none !important;
         justify-content: flex-start !important;
-        margin: 3px 0 0 40px !important;
-        opacity: 0;
-        pointer-events: none;
+        margin: 4px 0 0 !important;
+        opacity: .52;
         transform: scale(.92);
         transform-origin: left center;
-        transition: opacity .14s ease;
       }
 
       .ns-auto-nested-children > .content-item:hover .comment-menu,
       .ns-auto-nested-children > .content-item:focus-within .comment-menu {
-        opacity: .70;
-        pointer-events: auto;
+        display: flex !important;
       }
 
       .ns-auto-nested-children > .content-item .comment-menu .menu-item {
@@ -1209,24 +1250,47 @@
       }
 
       .ns-auto-nested-children > .content-item .post-content a[href*="post-"][href*="#"] {
-        opacity: .68;
+        color: rgba(20, 148, 105, .72);
+        font-size: 12px;
+        font-weight: 600;
+        opacity: .82;
         text-decoration: none;
       }
 
+      .ns-auto-nested-children > .content-item .post-content img:not(.emoji) {
+        max-width: min(160px, 100%) !important;
+        max-height: 140px !important;
+        object-fit: contain;
+      }
+
+      .ns-auto-nested-children > .content-item .post-content .emoji {
+        width: 1.2em !important;
+        height: 1.2em !important;
+        vertical-align: -.18em;
+      }
+
+      .ns-auto-nested-children > .content-item .post-content hr,
+      .ns-auto-nested-children > .content-item .post-content hr ~ *,
+      .ns-auto-nested-children > .content-item [class*="signature"],
+      .ns-auto-nested-children > .content-item [class*="Signature"] {
+        display: none !important;
+      }
+
       .ns-auto-nested-children .ns-auto-nested-toggle {
-        margin-left: 40px;
-        opacity: .78;
+        margin: 5px 0 0 14px;
+        opacity: .72;
       }
 
       .ns-auto-nested-children .ns-auto-nested-children {
-        margin-left: 40px;
-        padding-left: 9px;
-        border-left-style: dashed;
-        border-left-color: rgba(112, 125, 143, .16);
+        margin: 5px 0 0 14px;
+        padding-left: 10px;
+        border-left-style: dotted;
+        border-left-color: rgba(112, 125, 143, .14);
       }
 
       .ns-auto-nested-children .ns-auto-nested-children > .content-item {
-        background: rgba(112, 125, 143, .025);
+        padding-top: 3px !important;
+        padding-bottom: 3px !important;
       }
 
       .ns-auto-nested-parent > .floor-link-wrapper .floor-link::after {
@@ -1236,18 +1300,52 @@
       }
 
       .dark-layout .ns-auto-nested-toggle {
-        border-color: rgba(185, 198, 216, .22);
-        background: rgba(185, 198, 216, .08);
         color: rgba(218, 226, 237, .86);
       }
 
+      .dark-layout .ns-auto-nested-toggle::before {
+        border-color: rgba(185, 198, 216, .22);
+        color: rgba(218, 226, 237, .52);
+      }
+
       .dark-layout .ns-auto-nested-children {
-        border-left-color: rgba(185, 198, 216, .22);
+        border-left-color: rgba(185, 198, 216, .18);
       }
 
       .dark-layout .ns-auto-nested-children > .content-item {
         border-color: rgba(185, 198, 216, .12);
-        background: rgba(185, 198, 216, .055);
+        background: transparent;
+      }
+
+      .dark-layout .ns-auto-nested-children > .content-item::before {
+        background: rgba(185, 198, 216, .16);
+      }
+
+      .dark-layout .ns-auto-nested-children > .content-item > .nsk-content-meta-info {
+        color: rgba(218, 226, 237, .62);
+      }
+
+      .dark-layout .ns-auto-nested-children > .content-item .post-content {
+        color: rgba(234, 240, 248, .88);
+      }
+
+      .dark-layout .ns-auto-nested-children > .content-item .author-name {
+        color: rgba(234, 240, 248, .76);
+      }
+
+      .dark-layout .ns-auto-nested-children > .content-item .ns-auto-user-profile-badge {
+        border-color: rgba(185, 198, 216, .20);
+        color: rgba(218, 226, 237, .60);
+      }
+
+      .dark-layout .ns-auto-nested-children > .content-item .ns-auto-user-profile-badge:is([data-rank="6"], [data-rank="7"], [data-rank="8"], [data-rank="9"]) {
+        border-color: rgba(247, 215, 116, .34);
+        color: rgba(247, 215, 116, .78);
+      }
+
+      .dark-layout .ns-auto-nested-children > .content-item .content-info,
+      .dark-layout .ns-auto-nested-children > .content-item .floor-link {
+        color: rgba(218, 226, 237, .42);
       }
 
       .dark-layout .ns-auto-user-profile-badge {
