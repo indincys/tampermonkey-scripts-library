@@ -13,7 +13,7 @@
   - 功能：LINUX DO 帖子自动切换嵌套阅读视图，并自动展开可见楼中楼回复
 
 - `scripts/nodeseek-auto-nested-replies.user.js`
-  - 功能：NodeSeek 当前页楼中楼整理、用户等级/加入天数展示、评论自动翻页
+  - 功能：NodeSeek 自动签到、当前页楼中楼整理、用户等级/加入天数展示、评论自动翻页
 
 - `scripts/视频快捷键精简版-Enter-ShiftEnter-ZXC.user.js`
   - 功能：`Enter` 全屏自动播放、`Shift+Enter` 网页全屏、`Z/X/C` 倍速控制

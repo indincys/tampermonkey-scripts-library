@@ -2,11 +2,11 @@
 // @name         NodeSeek Auto Nested Replies
 // @name:zh-CN   NodeSeek 自动楼中楼
 // @namespace    https://www.nodeseek.com/
-// @version      1.4.0
-// @description  Turn visible NodeSeek reply references into nested comment threads, show user rank/join age, and auto-load next pages.
-// @description:zh-CN 在 NodeSeek 帖子页自动整理楼中楼、展示用户等级与加入天数，并自动加载下一页评论。
+// @version      1.5.0
+// @description  Turn visible NodeSeek reply references into nested comment threads, show user rank/join age, auto-load next pages, and check in daily.
+// @description:zh-CN 在 NodeSeek 自动签到；帖子页自动整理楼中楼、展示用户等级与加入天数，并自动加载下一页评论。
 // @author       Codex
-// @match        https://www.nodeseek.com/post-*
+// @match        https://www.nodeseek.com/*
 // @icon         https://www.google.com/s2/favicons?domain=nodeseek.com
 // @run-at       document-idle
 // @grant        none
@@ -27,6 +27,12 @@
     collapseFromDepth: 2,
     autoPageThresholdPx: 900,
     autoPageRetryDelayMs: 800,
+    checkinEnabled: true,
+    checkinStorageKey: "ns-auto-checkin-state-v1",
+    checkinDelayMs: 2600,
+    checkinPendingBackoffMs: 25 * 1000,
+    checkinFailureBackoffMs: 30 * 60 * 1000,
+    checkinToastMs: 4200,
   };
 
   let scheduled = 0;
@@ -37,6 +43,9 @@
   let observer = null;
   let observedTarget = null;
   let autoPageState = null;
+  let checkinScheduled = 0;
+  let checkinRunning = false;
+  let checkinToastTimer = 0;
   let activeProfileRequests = 0;
   const profileCache = loadProfileCache();
   const profileQueue = [];
@@ -376,6 +385,211 @@
     if (!state.loading && !state.done && state.nextUrl && nearPageBottom()) {
       loadNextPage("auto");
     }
+  }
+
+  function checkinTodayKey(date = new Date()) {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  function readCheckinState() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(CONFIG.checkinStorageKey) || "{}");
+      return parsed && typeof parsed === "object" ? parsed : {};
+    } catch {
+      return {};
+    }
+  }
+
+  function writeCheckinState(patch) {
+    const next = {
+      ...readCheckinState(),
+      ...patch,
+    };
+
+    try {
+      localStorage.setItem(CONFIG.checkinStorageKey, JSON.stringify(next));
+    } catch {
+      // Ignore storage failures. The request itself should not be blocked by private-mode storage.
+    }
+
+    return next;
+  }
+
+  function checkinDoneToday(state = readCheckinState()) {
+    return (
+      state.date === checkinTodayKey() &&
+      (state.status === "success" || state.status === "already")
+    );
+  }
+
+  function shouldSkipCheckin() {
+    const state = readCheckinState();
+    if (checkinDoneToday(state)) {
+      return true;
+    }
+
+    const lastAttemptAt = Number(state.lastAttemptAt || 0);
+    if (state.lastAttemptDate !== checkinTodayKey() || lastAttemptAt <= 0) {
+      return false;
+    }
+
+    const backoffMs = state.status === "pending" ? CONFIG.checkinPendingBackoffMs : CONFIG.checkinFailureBackoffMs;
+    return ["pending", "login", "error"].includes(state.status) && Date.now() - lastAttemptAt < backoffMs;
+  }
+
+  function messageFromCheckinPayload(payload, fallbackText) {
+    const candidates = [
+      payload?.message,
+      payload?.msg,
+      payload?.detail?.message,
+      payload?.detail?.msg,
+      payload?.data?.message,
+      payload?.data?.msg,
+      typeof payload?.detail === "string" ? payload.detail : "",
+      typeof payload?.data === "string" ? payload.data : "",
+      fallbackText,
+    ];
+
+    return candidates
+      .map((value) => String(value || "").replace(/\s+/g, " ").trim())
+      .find(Boolean) || "";
+  }
+
+  function parseCheckinResult(statusCode, text) {
+    let payload = null;
+    try {
+      payload = JSON.parse(text);
+    } catch {
+      payload = null;
+    }
+
+    const message = messageFromCheckinPayload(payload, text).slice(0, 140);
+    const inspectText = `${message} ${String(text || "").slice(0, 360)}`.toLowerCase();
+    const already = /已签到|已经签到|今日.*签到|already\s*signed|checked\s*in|signed\s*in/.test(inspectText);
+    const loginRequired = /未登录|请先登录|登录后|user\s*not\s*found|login|unauthorized|forbidden/.test(inspectText);
+
+    if (payload?.success === true) {
+      return {
+        ok: true,
+        status: already ? "already" : "success",
+        message: message || "签到成功",
+      };
+    }
+
+    if (already) {
+      return {
+        ok: true,
+        status: "already",
+        message: message || "今日已签到",
+      };
+    }
+
+    if (statusCode === 401 || statusCode === 403 || loginRequired) {
+      return {
+        ok: false,
+        status: "login",
+        message: "未登录或会话过期，已跳过自动签到",
+      };
+    }
+
+    return {
+      ok: false,
+      status: "error",
+      message: message || `签到接口返回 ${statusCode || "未知状态"}`,
+    };
+  }
+
+  function showCheckinToast(message, tone = "success") {
+    if (!message || !document.body) {
+      return;
+    }
+
+    let toast = document.querySelector(".ns-auto-checkin-toast");
+    if (!toast) {
+      toast = document.createElement("div");
+      toast.className = "ns-auto-checkin-toast";
+      toast.setAttribute("role", "status");
+      toast.setAttribute("aria-live", "polite");
+      document.body.append(toast);
+    }
+
+    toast.dataset.tone = tone;
+    toast.textContent = message;
+    toast.dataset.visible = "true";
+
+    window.clearTimeout(checkinToastTimer);
+    checkinToastTimer = window.setTimeout(() => {
+      toast.dataset.visible = "false";
+      window.setTimeout(() => {
+        if (toast.dataset.visible !== "true") {
+          toast.remove();
+        }
+      }, 180);
+    }, CONFIG.checkinToastMs);
+  }
+
+  async function runAutoCheckin() {
+    if (!CONFIG.checkinEnabled || checkinRunning || shouldSkipCheckin()) {
+      return;
+    }
+
+    checkinRunning = true;
+    const today = checkinTodayKey();
+    writeCheckinState({
+      status: "pending",
+      lastAttemptAt: Date.now(),
+      lastAttemptDate: today,
+    });
+
+    try {
+      const response = await fetch("/api/attendance", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          accept: "application/json, text/plain, */*",
+          "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+          "x-requested-with": "XMLHttpRequest",
+        },
+        body: "random=true",
+      });
+      const text = await response.text();
+      const result = parseCheckinResult(response.status, text);
+
+      writeCheckinState({
+        date: result.ok ? today : undefined,
+        status: result.status,
+        message: result.message,
+        lastAttemptAt: Date.now(),
+        lastAttemptDate: today,
+      });
+
+      if (result.ok) {
+        const label = result.status === "already" ? "NodeSeek 今日已签到" : "NodeSeek 签到成功";
+        const duplicate = result.status === "already" ? /已签到|已经签到/.test(result.message) : /签到成功|success/i.test(result.message);
+        const suffix = result.message && !duplicate ? `：${result.message}` : "";
+        showCheckinToast(`${label}${suffix}`, "success");
+      } else if (result.status !== "login") {
+        console.debug("[NodeSeek Auto Nested Replies] auto check-in skipped:", result.message);
+      }
+    } catch (error) {
+      writeCheckinState({
+        status: "error",
+        message: error?.message || String(error),
+        lastAttemptAt: Date.now(),
+        lastAttemptDate: today,
+      });
+      console.debug("[NodeSeek Auto Nested Replies] auto check-in failed:", error);
+    } finally {
+      checkinRunning = false;
+    }
+  }
+
+  function scheduleCheckin(delay = CONFIG.checkinDelayMs) {
+    window.clearTimeout(checkinScheduled);
+    checkinScheduled = window.setTimeout(runAutoCheckin, delay);
   }
 
   function loadProfileCache() {
@@ -753,6 +967,32 @@
         color: #b42318;
       }
 
+      .ns-auto-checkin-toast {
+        position: fixed;
+        right: 16px;
+        bottom: 18px;
+        z-index: 2147483647;
+        max-width: min(360px, calc(100vw - 32px));
+        padding: 8px 11px;
+        border: 1px solid rgba(20, 148, 105, .26);
+        border-radius: 6px;
+        background: rgba(255, 255, 255, .96);
+        color: #087451;
+        box-shadow: 0 8px 24px rgba(16, 24, 40, .14);
+        font-size: 12px;
+        font-weight: 650;
+        line-height: 1.55;
+        opacity: 0;
+        transform: translateY(8px);
+        transition: opacity .16s ease, transform .16s ease;
+        pointer-events: none;
+      }
+
+      .ns-auto-checkin-toast[data-visible="true"] {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
       .ns-auto-page-divider {
         display: flex;
         align-items: center;
@@ -1033,6 +1273,13 @@
         background: rgba(185, 198, 216, .16);
       }
 
+      .dark-layout .ns-auto-checkin-toast {
+        border-color: rgba(20, 148, 105, .34);
+        background: rgba(22, 28, 36, .96);
+        color: #6ee7b7;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, .30);
+      }
+
       @media (max-width: 720px) {
         .ns-auto-nested-toggle,
         .ns-auto-nested-children {
@@ -1059,6 +1306,7 @@
       const result = original.apply(this, arguments);
       scheduleApply(250);
       scheduleProfiles(300);
+      scheduleCheckin(1000);
       return result;
     };
   }
@@ -1115,6 +1363,7 @@
     window.addEventListener("pageshow", () => {
       scheduleApply(250);
       scheduleProfiles(250);
+      scheduleCheckin(1000);
       window.setTimeout(maybeLoadNextPage, 500);
     });
     window.addEventListener("scroll", maybeLoadNextPage, { passive: true });
@@ -1124,6 +1373,7 @@
     warmup();
     scheduleApply(250);
     scheduleProfiles(300);
+    scheduleCheckin();
     window.setTimeout(maybeLoadNextPage, 800);
   }
 
