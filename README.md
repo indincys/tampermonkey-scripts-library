@@ -12,6 +12,9 @@
 - `scripts/linuxdo-auto-expand-nested.user.js`
   - 功能：LINUX DO 帖子自动切换嵌套阅读视图，支持 Cmd/Ctrl/中键新标签页打开，并自动展开可见楼中楼回复
 
+- `scripts/idcflare-auto-expand-nested.user.js`
+  - 功能：IDC Flare 帖子自动切换嵌套阅读视图，支持 Cmd/Ctrl/中键新标签页打开，并自动展开可见楼中楼回复
+
 - `scripts/nodeseek-auto-nested-replies.user.js`
   - 功能：NodeSeek 自动签到、Linux.do 风格楼中楼整理、用户等级/加入天数/签名展示、评论自动翻页
 
