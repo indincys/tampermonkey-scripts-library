@@ -2,7 +2,7 @@
 // @name         NodeSeek Auto Nested Replies
 // @name:zh-CN   NodeSeek 自动楼中楼
 // @namespace    https://www.nodeseek.com/
-// @version      1.8.0
+// @version      1.9.0
 // @description  Turn visible NodeSeek reply references into Linux.do-like nested threads, show user rank/join age/signatures, auto-load next pages, and check in daily.
 // @description:zh-CN 在 NodeSeek 自动签到；帖子页以类似 Linux.do 的样式整理楼中楼、展示用户等级/加入天数/签名，并自动加载下一页评论。
 // @author       Codex
@@ -21,7 +21,7 @@
     rerenderDelayMs: 180,
     minParentFloor: 1,
     warmupDelaysMs: [250, 700, 1500, 3000, 6000],
-    profileCacheKey: "ns-auto-nested-profile-cache-v2",
+    profileCacheKey: "ns-auto-nested-profile-cache-v3",
     profileCacheTtlMs: 6 * 60 * 60 * 1000,
     profileConcurrency: 3,
     collapseFromDepth: Infinity,
@@ -795,37 +795,48 @@
     Array.from(content.children).forEach((child) => {
       if (comparableText(child.textContent) === signatureKey) {
         child.classList.add("ns-auto-inline-signature");
+        const previous = child.previousElementSibling;
+        if (previous && (previous.tagName === "HR" || !comparableText(previous.textContent))) {
+          previous.classList.add("ns-auto-inline-signature");
+        }
       }
     });
   }
 
-  function hideParentReference(comment, parentFloor, topicId) {
+  function hideLeadingReplyReferences(comment, topicId) {
     const content = comment.querySelector(":scope > .post-content");
-    if (!content || !Number.isInteger(parentFloor)) {
+    const selfFloor = floorNumber(comment);
+    if (!content || !topicId || !Number.isInteger(selfFloor)) {
       return;
     }
 
-    const references = Array.from(content.querySelectorAll("a[href]")).filter(
-      (link) => sameTopicFloorFromLink(link, topicId) === parentFloor
-    );
+    const paragraphs = Array.from(content.querySelectorAll(":scope > p"));
+    for (const paragraph of paragraphs) {
+      const references = Array.from(paragraph.querySelectorAll("a[href]")).filter((link) => {
+        const floor = sameTopicFloorFromLink(link, topicId);
+        return Number.isInteger(floor) && floor < selfFloor;
+      });
 
-    references.forEach((link) => {
-      hideParentMentionBefore(link);
-      link.classList.add("ns-auto-parent-reference");
-    });
+      references.forEach((link) => {
+        hideParentMentionBefore(link);
+        link.classList.add("ns-auto-parent-reference");
+      });
 
-    Array.from(content.querySelectorAll("p")).forEach((paragraph) => {
       const remaining = paragraphWithoutParentReferences(paragraph);
       if (paragraph.querySelector(".ns-auto-parent-reference") && (!remaining || onlyParentMentionLeft(remaining))) {
         paragraph.classList.add("ns-auto-parent-reference-line");
       }
-    });
+
+      if (remaining && !onlyParentMentionLeft(remaining)) {
+        break;
+      }
+    }
   }
 
   function prepareNestedComment(comment, parentFloor, topicId) {
     comment.classList.add("ns-auto-nested-item");
     comment.dataset.nsNestedParent = String(parentFloor || "");
-    hideParentReference(comment, parentFloor, topicId);
+    hideLeadingReplyReferences(comment, topicId);
     setupNestedSignatureToggle(comment);
   }
 
@@ -1292,8 +1303,8 @@
       }
 
       .ns-auto-nested-children {
-        margin: 10px 0 0 48px;
-        padding: 0 0 0 28px;
+        margin: 8px 0 0 42px;
+        padding: 0 0 0 18px;
         border-left: 0;
         list-style: none;
       }
@@ -1306,7 +1317,7 @@
         position: relative;
         width: auto !important;
         margin: 0 !important;
-        padding: 11px 0 12px 0 !important;
+        padding: 8px 0 8px 0 !important;
         border: 0;
         border-radius: 0;
         background: transparent;
@@ -1316,13 +1327,13 @@
       .ns-auto-nested-children > .content-item::before {
         content: "";
         position: absolute;
-        left: -31px;
-        top: 26px;
-        width: 26px;
-        height: 24px;
+        left: -21px;
+        top: 23px;
+        width: 18px;
+        height: 18px;
         border-left: 3px solid rgba(112, 125, 143, .12);
         border-bottom: 3px solid rgba(112, 125, 143, .12);
-        border-bottom-left-radius: 14px;
+        border-bottom-left-radius: 12px;
         background: transparent;
       }
 
@@ -1331,7 +1342,7 @@
         min-height: 34px;
         align-items: center;
         gap: 10px;
-        margin: 0 0 6px !important;
+        margin: 0 0 4px !important;
         color: rgba(75, 88, 108, .66);
       }
 
@@ -1349,7 +1360,7 @@
       }
 
       .ns-auto-nested-children > .content-item .post-content {
-        margin: 0 0 0 44px !important;
+        margin: 0 0 0 40px !important;
         padding: 0 !important;
         color: rgba(36, 42, 52, .92);
         font-size: 15px;
@@ -1404,7 +1415,7 @@
       .ns-auto-nested-children > .content-item .comment-menu {
         display: flex !important;
         justify-content: flex-start !important;
-        margin: 9px 0 0 44px !important;
+        margin: 6px 0 0 40px !important;
         opacity: .44;
         transform: none;
         transform-origin: left center;
@@ -1437,18 +1448,13 @@
         vertical-align: -.18em;
       }
 
-      .ns-auto-nested-children > .content-item .post-content hr,
-      .ns-auto-nested-children > .content-item .post-content hr ~ * {
-        display: none !important;
-      }
-
       .ns-auto-nested-children > .content-item[data-ns-signature-available="true"] {
         cursor: pointer;
       }
 
       .ns-auto-nested-signature {
         display: none;
-        margin: 8px 0 0 44px;
+        margin: 6px 0 0 40px;
         padding: 7px 10px;
         border-left: 3px solid rgba(112, 125, 143, .16);
         border-radius: 0 4px 4px 0;
@@ -1464,19 +1470,29 @@
       }
 
       .ns-auto-nested-children .ns-auto-nested-toggle {
-        margin: 7px 0 0 44px;
+        margin: 5px 0 0 40px;
         opacity: .72;
       }
 
       .ns-auto-nested-children .ns-auto-nested-children {
-        margin: 8px 0 0 44px;
-        padding-left: 22px;
+        margin: 5px 0 0 20px;
+        padding-left: 12px;
         border-left: 0;
       }
 
       .ns-auto-nested-children .ns-auto-nested-children > .content-item {
-        padding-top: 3px !important;
-        padding-bottom: 3px !important;
+        padding-top: 6px !important;
+        padding-bottom: 6px !important;
+      }
+
+      .ns-auto-nested-children .ns-auto-nested-children > .content-item::before {
+        left: -15px;
+        width: 12px;
+      }
+
+      .ns-auto-nested-children .ns-auto-nested-children .ns-auto-nested-children {
+        margin-left: 14px;
+        padding-left: 10px;
       }
 
       .ns-auto-nested-parent > .floor-link-wrapper .floor-link::after {
@@ -1572,16 +1588,16 @@
       @media (max-width: 720px) {
         .ns-auto-nested-toggle,
         .ns-auto-nested-children {
-          margin-left: 18px;
+          margin-left: 14px;
         }
 
         .ns-auto-nested-children {
-          padding-left: 20px;
+          padding-left: 14px;
         }
 
         .ns-auto-nested-children > .content-item::before {
-          left: -22px;
-          width: 18px;
+          left: -16px;
+          width: 12px;
           border-left-width: 2px;
           border-bottom-width: 2px;
         }
@@ -1591,7 +1607,16 @@
         .ns-auto-nested-signature,
         .ns-auto-nested-children .ns-auto-nested-toggle,
         .ns-auto-nested-children .ns-auto-nested-children {
-          margin-left: 42px;
+          margin-left: 36px;
+        }
+
+        .ns-auto-nested-children .ns-auto-nested-children {
+          padding-left: 10px;
+        }
+
+        .ns-auto-nested-children .ns-auto-nested-children .ns-auto-nested-children {
+          margin-left: 10px;
+          padding-left: 8px;
         }
       }
     `;
