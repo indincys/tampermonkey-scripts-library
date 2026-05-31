@@ -2,7 +2,7 @@
 // @name         NodeSeek Auto Nested Replies
 // @name:zh-CN   NodeSeek 自动楼中楼
 // @namespace    https://www.nodeseek.com/
-// @version      1.9.0
+// @version      1.10.0
 // @description  Turn visible NodeSeek reply references into Linux.do-like nested threads, show user rank/join age/signatures, auto-load next pages, and check in daily.
 // @description:zh-CN 在 NodeSeek 自动签到；帖子页以类似 Linux.do 的样式整理楼中楼、展示用户等级/加入天数/签名，并自动加载下一页评论。
 // @author       Codex
@@ -751,7 +751,7 @@
   }
 
   function onlyParentMentionLeft(text) {
-    return /^@?[\w.\-_\u4e00-\u9fff]+$/.test(text);
+    return /^@[\w.\-_\u4e00-\u9fff]+$/.test(text);
   }
 
   function hideParentMentionBefore(link) {
@@ -803,6 +803,74 @@
     });
   }
 
+  function ensureNestedSignature(comment, signatureText) {
+    const normalized = normalizeSignature(signatureText);
+    let signature = comment.querySelector(":scope > .ns-auto-nested-signature");
+    if (!signature) {
+      signature = document.createElement("div");
+      signature.className = "ns-auto-nested-signature";
+      const content = comment.querySelector(":scope > .post-content");
+      if (content) {
+        content.insertAdjacentElement("afterend", signature);
+      } else {
+        comment.append(signature);
+      }
+    }
+
+    if (!normalized) {
+      signature.hidden = true;
+      signature.textContent = "";
+      comment.dataset.nsSignatureAvailable = "false";
+      comment.removeAttribute("title");
+      return;
+    }
+
+    signature.hidden = false;
+    signature.textContent = normalized;
+    comment.dataset.nsSignatureAvailable = "true";
+    if (!comment.dataset.signatureOpen) {
+      comment.dataset.signatureOpen = "false";
+    }
+    comment.title = "点击显示/隐藏签名";
+  }
+
+  function markInlineSignatureCandidate(comment) {
+    const content = comment.querySelector(":scope > .post-content");
+    if (!content || content.dataset.nsSignatureCandidateChecked === "true") {
+      return;
+    }
+
+    content.dataset.nsSignatureCandidateChecked = "true";
+    const separators = Array.from(content.children).filter((child) => child.tagName === "HR");
+    const separator = separators.at(-1);
+    if (!separator) {
+      return;
+    }
+
+    const trailing = [];
+    let cursor = separator.nextElementSibling;
+    while (cursor) {
+      trailing.push(cursor);
+      cursor = cursor.nextElementSibling;
+    }
+
+    const text = trailing.map((element) => element.textContent.trim()).filter(Boolean).join("\n");
+    const compact = comparableText(text);
+    const containsHeavyContent = trailing.some((element) =>
+      element.matches("pre, code, blockquote, table, video, iframe") ||
+      element.querySelector("pre, code, blockquote, table, video, iframe")
+    );
+
+    if (!compact || compact.length > 160 || trailing.length > 4 || containsHeavyContent) {
+      return;
+    }
+
+    separator.classList.add("ns-auto-inline-signature");
+    trailing.forEach((element) => element.classList.add("ns-auto-inline-signature"));
+    comment.dataset.nsInlineSignatureText = text;
+    ensureNestedSignature(comment, text);
+  }
+
   function hideLeadingReplyReferences(comment, topicId) {
     const content = comment.querySelector(":scope > .post-content");
     const selfFloor = floorNumber(comment);
@@ -837,6 +905,7 @@
     comment.classList.add("ns-auto-nested-item");
     comment.dataset.nsNestedParent = String(parentFloor || "");
     hideLeadingReplyReferences(comment, topicId);
+    markInlineSignatureCandidate(comment);
     setupNestedSignatureToggle(comment);
   }
 
@@ -847,35 +916,10 @@
     }
 
     setupNestedSignatureToggle(comment);
-    const signatureText = normalizeSignature(profile.signature);
-    let signature = comment.querySelector(":scope > .ns-auto-nested-signature");
-    if (!signature) {
-      signature = document.createElement("div");
-      signature.className = "ns-auto-nested-signature";
-      const content = comment.querySelector(":scope > .post-content");
-      if (content) {
-        content.insertAdjacentElement("afterend", signature);
-      } else {
-        comment.append(signature);
-      }
-    }
-
-    if (!signatureText) {
-      signature.hidden = true;
-      signature.textContent = "";
-      comment.dataset.nsSignatureAvailable = "false";
-      comment.removeAttribute("title");
-      return;
-    }
-
-    signature.hidden = false;
-    signature.textContent = signatureText;
+    markInlineSignatureCandidate(comment);
+    const signatureText = normalizeSignature(profile.signature || comment.dataset.nsInlineSignatureText || "");
     hideNestedInlineSignature(comment, signatureText);
-    comment.dataset.nsSignatureAvailable = "true";
-    if (!comment.dataset.signatureOpen) {
-      comment.dataset.signatureOpen = "false";
-    }
-    comment.title = "点击显示/隐藏签名";
+    ensureNestedSignature(comment, signatureText);
   }
 
   function renderProfileBadge(authorLink, profile) {
@@ -1303,8 +1347,8 @@
       }
 
       .ns-auto-nested-children {
-        margin: 8px 0 0 42px;
-        padding: 0 0 0 18px;
+        margin: 7px 0 0 34px;
+        padding: 0 0 0 14px;
         border-left: 0;
         list-style: none;
       }
@@ -1317,7 +1361,7 @@
         position: relative;
         width: auto !important;
         margin: 0 !important;
-        padding: 8px 0 8px 0 !important;
+        padding: 7px 0 7px 0 !important;
         border: 0;
         border-radius: 0;
         background: transparent;
@@ -1327,9 +1371,9 @@
       .ns-auto-nested-children > .content-item::before {
         content: "";
         position: absolute;
-        left: -21px;
+        left: -17px;
         top: 23px;
-        width: 18px;
+        width: 14px;
         height: 18px;
         border-left: 3px solid rgba(112, 125, 143, .12);
         border-bottom: 3px solid rgba(112, 125, 143, .12);
@@ -1360,7 +1404,7 @@
       }
 
       .ns-auto-nested-children > .content-item .post-content {
-        margin: 0 0 0 40px !important;
+        margin: 0 0 0 38px !important;
         padding: 0 !important;
         color: rgba(36, 42, 52, .92);
         font-size: 15px;
@@ -1415,7 +1459,7 @@
       .ns-auto-nested-children > .content-item .comment-menu {
         display: flex !important;
         justify-content: flex-start !important;
-        margin: 6px 0 0 40px !important;
+        margin: 6px 0 0 38px !important;
         opacity: .44;
         transform: none;
         transform-origin: left center;
@@ -1454,7 +1498,7 @@
 
       .ns-auto-nested-signature {
         display: none;
-        margin: 6px 0 0 40px;
+        margin: 6px 0 0 38px;
         padding: 7px 10px;
         border-left: 3px solid rgba(112, 125, 143, .16);
         border-radius: 0 4px 4px 0;
@@ -1470,13 +1514,13 @@
       }
 
       .ns-auto-nested-children .ns-auto-nested-toggle {
-        margin: 5px 0 0 40px;
+        margin: 5px 0 0 38px;
         opacity: .72;
       }
 
       .ns-auto-nested-children .ns-auto-nested-children {
-        margin: 5px 0 0 20px;
-        padding-left: 12px;
+        margin: 4px 0 0 10px;
+        padding-left: 8px;
         border-left: 0;
       }
 
@@ -1486,13 +1530,13 @@
       }
 
       .ns-auto-nested-children .ns-auto-nested-children > .content-item::before {
-        left: -15px;
-        width: 12px;
+        left: -11px;
+        width: 8px;
       }
 
       .ns-auto-nested-children .ns-auto-nested-children .ns-auto-nested-children {
-        margin-left: 14px;
-        padding-left: 10px;
+        margin-left: 8px;
+        padding-left: 7px;
       }
 
       .ns-auto-nested-parent > .floor-link-wrapper .floor-link::after {
@@ -1588,16 +1632,16 @@
       @media (max-width: 720px) {
         .ns-auto-nested-toggle,
         .ns-auto-nested-children {
-          margin-left: 14px;
+          margin-left: 8px;
         }
 
         .ns-auto-nested-children {
-          padding-left: 14px;
+          padding-left: 10px;
         }
 
         .ns-auto-nested-children > .content-item::before {
-          left: -16px;
-          width: 12px;
+          left: -12px;
+          width: 9px;
           border-left-width: 2px;
           border-bottom-width: 2px;
         }
@@ -1611,12 +1655,13 @@
         }
 
         .ns-auto-nested-children .ns-auto-nested-children {
-          padding-left: 10px;
+          margin-left: 6px;
+          padding-left: 7px;
         }
 
         .ns-auto-nested-children .ns-auto-nested-children .ns-auto-nested-children {
-          margin-left: 10px;
-          padding-left: 8px;
+          margin-left: 5px;
+          padding-left: 6px;
         }
       }
     `;
