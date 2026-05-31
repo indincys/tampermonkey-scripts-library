@@ -2,9 +2,9 @@
 // @name         LINUX DO Auto Expand Nested Replies
 // @name:zh-CN   LINUX DO 自动展开楼中楼
 // @namespace    https://linux.do/
-// @version      1.0.0
-// @description  Redirect LINUX DO topics to Discourse nested view and auto-expand visible nested replies while reading.
-// @description:zh-CN 将 LINUX DO 帖子切到嵌套阅读视图，并在阅读时自动展开可见楼中楼回复。
+// @version      1.1.0
+// @description  Redirect LINUX DO topics to Discourse nested view, preserve Cmd/Ctrl new-tab opening, and auto-expand visible nested replies while reading.
+// @description:zh-CN 将 LINUX DO 帖子切到嵌套阅读视图，保留 Cmd/Ctrl 新标签页打开，并在阅读时自动展开可见楼中楼回复。
 // @author       Codex
 // @match        https://linux.do/*
 // @icon         https://www.google.com/s2/favicons?domain=linux.do
@@ -28,8 +28,8 @@
   let scheduled = 0;
   let clickLoopRunning = false;
 
-  function isSameSite(url) {
-    return url.origin === location.origin && url.hostname === "linux.do";
+  function isLinuxDoTopicHost(url) {
+    return url.hostname === "linux.do" || url.hostname === "go.linux.do";
   }
 
   function shouldSkipTopicRedirect(url) {
@@ -44,7 +44,7 @@
       return null;
     }
 
-    if (!isSameSite(url) || shouldSkipTopicRedirect(url)) {
+    if (!isLinuxDoTopicHost(url) || shouldSkipTopicRedirect(url)) {
       return null;
     }
 
@@ -58,6 +58,8 @@
 
     const topicId = match[1];
     const postNumber = match[2];
+    url.protocol = "https:";
+    url.hostname = "linux.do";
     url.pathname = `/n/topic/${topicId}${postNumber && postNumber !== "1" ? `/${postNumber}` : ""}`;
     return url.href;
   }
@@ -171,26 +173,44 @@
     };
   }
 
+  function shouldOpenInNewTab(event, link) {
+    return event.metaKey || event.ctrlKey || event.button === 1 || link.target === "_blank";
+  }
+
+  function openNestedUrl(event, link, nestedUrl) {
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (shouldOpenInNewTab(event, link)) {
+      window.open(nestedUrl, "_blank", "noopener");
+      return;
+    }
+
+    location.href = nestedUrl;
+  }
+
+  function handleTopicLinkClick(event) {
+    if (event.defaultPrevented || (event.type === "auxclick" && event.button !== 1)) {
+      return;
+    }
+
+    const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!link) {
+      return;
+    }
+
+    const nestedUrl = toNestedTopicUrl(link.href);
+    if (!nestedUrl || nestedUrl === link.href) {
+      return;
+    }
+
+    openNestedUrl(event, link, nestedUrl);
+  }
+
   redirectIfNeeded();
 
-  document.addEventListener(
-    "click",
-    (event) => {
-      const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
-      if (!link) {
-        return;
-      }
-
-      const nestedUrl = toNestedTopicUrl(link.href);
-      if (!nestedUrl || nestedUrl === link.href) {
-        return;
-      }
-
-      event.preventDefault();
-      location.href = nestedUrl;
-    },
-    true
-  );
+  document.addEventListener("click", handleTopicLinkClick, true);
+  document.addEventListener("auxclick", handleTopicLinkClick, true);
 
   patchHistory("pushState");
   patchHistory("replaceState");
