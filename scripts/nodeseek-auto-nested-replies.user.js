@@ -2,7 +2,7 @@
 // @name         NodeSeek Auto Nested Replies
 // @name:zh-CN   NodeSeek 自动楼中楼
 // @namespace    https://www.nodeseek.com/
-// @version      1.7.0
+// @version      1.8.0
 // @description  Turn visible NodeSeek reply references into Linux.do-like nested threads, show user rank/join age/signatures, auto-load next pages, and check in daily.
 // @description:zh-CN 在 NodeSeek 自动签到；帖子页以类似 Linux.do 的样式整理楼中楼、展示用户等级/加入天数/签名，并自动加载下一页评论。
 // @author       Codex
@@ -24,7 +24,7 @@
     profileCacheKey: "ns-auto-nested-profile-cache-v2",
     profileCacheTtlMs: 6 * 60 * 60 * 1000,
     profileConcurrency: 3,
-    collapseFromDepth: 2,
+    collapseFromDepth: Infinity,
     autoPageThresholdPx: 900,
     autoPageRetryDelayMs: 800,
     checkinEnabled: true,
@@ -754,6 +754,51 @@
     return /^@?[\w.\-_\u4e00-\u9fff]+$/.test(text);
   }
 
+  function hideParentMentionBefore(link) {
+    let cursor = link.previousSibling;
+    while (cursor && cursor.nodeType === Node.TEXT_NODE && !cursor.textContent.trim()) {
+      const previous = cursor.previousSibling;
+      cursor.textContent = "";
+      cursor = previous;
+    }
+
+    if (!cursor) {
+      return;
+    }
+
+    if (cursor.nodeType === Node.ELEMENT_NODE) {
+      const text = cursor.textContent.trim();
+      if (cursor.matches("a") && /^@/.test(text)) {
+        cursor.classList.add("ns-auto-parent-reference");
+      }
+      return;
+    }
+
+    if (cursor.nodeType === Node.TEXT_NODE) {
+      cursor.textContent = cursor.textContent.replace(/@[\w.\-_\u4e00-\u9fff]+\s*$/, "");
+    }
+  }
+
+  function comparableText(text) {
+    return String(text || "")
+      .replace(/\s+/g, "")
+      .trim();
+  }
+
+  function hideNestedInlineSignature(comment, signatureText) {
+    const signatureKey = comparableText(signatureText);
+    const content = comment.querySelector(":scope > .post-content");
+    if (!content || !signatureKey) {
+      return;
+    }
+
+    Array.from(content.children).forEach((child) => {
+      if (comparableText(child.textContent) === signatureKey) {
+        child.classList.add("ns-auto-inline-signature");
+      }
+    });
+  }
+
   function hideParentReference(comment, parentFloor, topicId) {
     const content = comment.querySelector(":scope > .post-content");
     if (!content || !Number.isInteger(parentFloor)) {
@@ -765,6 +810,7 @@
     );
 
     references.forEach((link) => {
+      hideParentMentionBefore(link);
       link.classList.add("ns-auto-parent-reference");
     });
 
@@ -813,6 +859,7 @@
 
     signature.hidden = false;
     signature.textContent = signatureText;
+    hideNestedInlineSignature(comment, signatureText);
     comment.dataset.nsSignatureAvailable = "true";
     if (!comment.dataset.signatureOpen) {
       comment.dataset.signatureOpen = "false";
@@ -902,8 +949,7 @@
     children = document.createElement("ol");
     children.className = "ns-auto-nested-children";
     children.dataset.depth = String(depthOf(parent) + 1);
-    children.dataset.collapsed =
-      Number(children.dataset.depth) >= CONFIG.collapseFromDepth ? "true" : "false";
+    children.dataset.collapsed = "false";
 
     const toggle = document.createElement("button");
     toggle.type = "button";
@@ -1248,7 +1294,7 @@
       .ns-auto-nested-children {
         margin: 10px 0 0 48px;
         padding: 0 0 0 28px;
-        border-left: 3px solid rgba(112, 125, 143, .16);
+        border-left: 0;
         list-style: none;
       }
 
@@ -1374,7 +1420,8 @@
       }
 
       .ns-auto-parent-reference,
-      .ns-auto-parent-reference-line {
+      .ns-auto-parent-reference-line,
+      .ns-auto-inline-signature {
         display: none !important;
       }
 
@@ -1424,7 +1471,7 @@
       .ns-auto-nested-children .ns-auto-nested-children {
         margin: 8px 0 0 44px;
         padding-left: 22px;
-        border-left: 2px solid rgba(112, 125, 143, .12);
+        border-left: 0;
       }
 
       .ns-auto-nested-children .ns-auto-nested-children > .content-item {
@@ -1448,7 +1495,7 @@
       }
 
       .dark-layout .ns-auto-nested-children {
-        border-left-color: rgba(185, 198, 216, .18);
+        border-left-color: transparent;
       }
 
       .dark-layout .ns-auto-nested-children > .content-item {
@@ -1530,7 +1577,6 @@
 
         .ns-auto-nested-children {
           padding-left: 20px;
-          border-left-width: 2px;
         }
 
         .ns-auto-nested-children > .content-item::before {
