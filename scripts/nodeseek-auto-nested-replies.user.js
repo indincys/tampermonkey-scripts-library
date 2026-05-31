@@ -2,9 +2,9 @@
 // @name         NodeSeek Auto Nested Replies
 // @name:zh-CN   NodeSeek 自动楼中楼
 // @namespace    https://www.nodeseek.com/
-// @version      1.6.0
-// @description  Turn visible NodeSeek reply references into quiet annotation threads, show user rank/join age, auto-load next pages, and check in daily.
-// @description:zh-CN 在 NodeSeek 自动签到；帖子页以轻量旁注样式整理楼中楼、展示用户等级与加入天数，并自动加载下一页评论。
+// @version      1.7.0
+// @description  Turn visible NodeSeek reply references into Linux.do-like nested threads, show user rank/join age/signatures, auto-load next pages, and check in daily.
+// @description:zh-CN 在 NodeSeek 自动签到；帖子页以类似 Linux.do 的样式整理楼中楼、展示用户等级/加入天数/签名，并自动加载下一页评论。
 // @author       Codex
 // @match        https://www.nodeseek.com/*
 // @icon         https://www.google.com/s2/favicons?domain=nodeseek.com
@@ -21,7 +21,7 @@
     rerenderDelayMs: 180,
     minParentFloor: 1,
     warmupDelaysMs: [250, 700, 1500, 3000, 6000],
-    profileCacheKey: "ns-auto-nested-profile-cache-v1",
+    profileCacheKey: "ns-auto-nested-profile-cache-v2",
     profileCacheTtlMs: 6 * 60 * 60 * 1000,
     profileConcurrency: 3,
     collapseFromDepth: 2,
@@ -644,9 +644,13 @@
   function profileFromApi(detail) {
     const rank = Number(detail?.rank);
     const joinDays = normalizeJoinDays(detail?.created_at_str);
+    const signature = String(detail?.readme || detail?.bio || "")
+      .replace(/\r\n/g, "\n")
+      .trim();
     return {
       rank: Number.isFinite(rank) ? rank : null,
       joinDays,
+      signature,
     };
   }
 
@@ -660,7 +664,7 @@
       return profilePending.get(memberId);
     }
 
-    const request = fetch(`/api/account/getInfo/${memberId}?readme=0`, {
+    const request = fetch(`/api/account/getInfo/${memberId}?readme=1`, {
       credentials: "same-origin",
       headers: {
         accept: "application/json",
@@ -702,6 +706,120 @@
     return String(Math.max(0, Math.min(9, rank)));
   }
 
+  function normalizeSignature(signature) {
+    return String(signature || "")
+      .replace(/\r\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim()
+      .slice(0, 600);
+  }
+
+  function interactiveTarget(target) {
+    return Boolean(target?.closest?.("a, button, input, textarea, select, label, summary, .comment-menu"));
+  }
+
+  function setupNestedSignatureToggle(comment) {
+    if (!comment || comment.dataset.nsSignatureToggleReady === "true") {
+      return;
+    }
+
+    comment.dataset.nsSignatureToggleReady = "true";
+    comment.addEventListener("click", (event) => {
+      if (interactiveTarget(event.target)) {
+        return;
+      }
+
+      const ownItem = event.target.closest?.(".content-item.ns-auto-nested-item");
+      if (ownItem !== comment) {
+        return;
+      }
+
+      const signature = comment.querySelector(":scope > .ns-auto-nested-signature");
+      if (!signature || signature.hidden) {
+        return;
+      }
+
+      const opened = comment.dataset.signatureOpen === "true";
+      comment.dataset.signatureOpen = opened ? "false" : "true";
+    });
+  }
+
+  function paragraphWithoutParentReferences(paragraph) {
+    const clone = paragraph.cloneNode(true);
+    clone.querySelectorAll(".ns-auto-parent-reference").forEach((element) => element.remove());
+    return clone.textContent.replace(/\s+/g, "").trim();
+  }
+
+  function onlyParentMentionLeft(text) {
+    return /^@?[\w.\-_\u4e00-\u9fff]+$/.test(text);
+  }
+
+  function hideParentReference(comment, parentFloor, topicId) {
+    const content = comment.querySelector(":scope > .post-content");
+    if (!content || !Number.isInteger(parentFloor)) {
+      return;
+    }
+
+    const references = Array.from(content.querySelectorAll("a[href]")).filter(
+      (link) => sameTopicFloorFromLink(link, topicId) === parentFloor
+    );
+
+    references.forEach((link) => {
+      link.classList.add("ns-auto-parent-reference");
+    });
+
+    Array.from(content.querySelectorAll("p")).forEach((paragraph) => {
+      const remaining = paragraphWithoutParentReferences(paragraph);
+      if (paragraph.querySelector(".ns-auto-parent-reference") && (!remaining || onlyParentMentionLeft(remaining))) {
+        paragraph.classList.add("ns-auto-parent-reference-line");
+      }
+    });
+  }
+
+  function prepareNestedComment(comment, parentFloor, topicId) {
+    comment.classList.add("ns-auto-nested-item");
+    comment.dataset.nsNestedParent = String(parentFloor || "");
+    hideParentReference(comment, parentFloor, topicId);
+    setupNestedSignatureToggle(comment);
+  }
+
+  function renderNestedSignature(authorLink, profile) {
+    const comment = authorLink.closest(".content-item.ns-auto-nested-item");
+    if (!comment) {
+      return;
+    }
+
+    setupNestedSignatureToggle(comment);
+    const signatureText = normalizeSignature(profile.signature);
+    let signature = comment.querySelector(":scope > .ns-auto-nested-signature");
+    if (!signature) {
+      signature = document.createElement("div");
+      signature.className = "ns-auto-nested-signature";
+      const content = comment.querySelector(":scope > .post-content");
+      if (content) {
+        content.insertAdjacentElement("afterend", signature);
+      } else {
+        comment.append(signature);
+      }
+    }
+
+    if (!signatureText) {
+      signature.hidden = true;
+      signature.textContent = "";
+      comment.dataset.nsSignatureAvailable = "false";
+      comment.removeAttribute("title");
+      return;
+    }
+
+    signature.hidden = false;
+    signature.textContent = signatureText;
+    comment.dataset.nsSignatureAvailable = "true";
+    if (!comment.dataset.signatureOpen) {
+      comment.dataset.signatureOpen = "false";
+    }
+    comment.title = "点击显示/隐藏签名";
+  }
+
   function renderProfileBadge(authorLink, profile) {
     if (!profile || !authorLink || !authorLink.parentElement) {
       return;
@@ -719,6 +837,7 @@
     badge.dataset.rank = rankTone(profile.rank);
     badge.textContent = `${rankText} · ${joinText}`;
     badge.title = `等级 ${rankText}，加入 ${joinText}`;
+    renderNestedSignature(authorLink, profile);
   }
 
   function enqueueProfile(authorLink, memberId) {
@@ -818,7 +937,7 @@
     toggle.setAttribute("aria-expanded", String(!collapsed));
   }
 
-  function moveIntoParent(comment, parent) {
+  function moveIntoParent(comment, parent, parentFloor, topicId) {
     if (!parent || parent === comment || comment.contains(parent)) {
       return false;
     }
@@ -828,12 +947,12 @@
     }
 
     const children = getOrCreateChildren(parent);
+    prepareNestedComment(comment, parentFloor, topicId);
     if (comment.parentElement === children) {
       return false;
     }
 
     children.append(comment);
-    comment.classList.add("ns-auto-nested-item");
     comment.dataset.nsNestedDepth = children.dataset.depth || String(depthOf(parent) + 1);
     parent.classList.add("ns-auto-nested-parent");
     updateToggle(children);
@@ -875,7 +994,7 @@
         }
 
         const parent = byFloor.get(parentFloor);
-        if (moveIntoParent(comment, parent)) {
+        if (moveIntoParent(comment, parent, parentFloor, topicId)) {
           moved += 1;
         }
       });
@@ -1127,9 +1246,9 @@
       }
 
       .ns-auto-nested-children {
-        margin: 7px 0 0 58px;
-        padding: 0 0 0 12px;
-        border-left: 1px solid rgba(112, 125, 143, .18);
+        margin: 10px 0 0 48px;
+        padding: 0 0 0 28px;
+        border-left: 3px solid rgba(112, 125, 143, .16);
         list-style: none;
       }
 
@@ -1140,8 +1259,8 @@
       .ns-auto-nested-children > .content-item {
         position: relative;
         width: auto !important;
-        margin: 5px 0 0 !important;
-        padding: 4px 0 5px 10px !important;
+        margin: 0 !important;
+        padding: 11px 0 12px 0 !important;
         border: 0;
         border-radius: 0;
         background: transparent;
@@ -1151,37 +1270,49 @@
       .ns-auto-nested-children > .content-item::before {
         content: "";
         position: absolute;
-        left: -13px;
-        top: 14px;
-        width: 10px;
-        height: 1px;
-        background: rgba(112, 125, 143, .16);
+        left: -31px;
+        top: 26px;
+        width: 26px;
+        height: 24px;
+        border-left: 3px solid rgba(112, 125, 143, .12);
+        border-bottom: 3px solid rgba(112, 125, 143, .12);
+        border-bottom-left-radius: 14px;
+        background: transparent;
       }
 
       .ns-auto-nested-children > .content-item > .nsk-content-meta-info {
         display: flex !important;
-        min-height: 0;
-        align-items: baseline;
-        gap: 6px;
-        margin: 0 0 2px !important;
+        min-height: 34px;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 6px !important;
         color: rgba(75, 88, 108, .66);
       }
 
       .ns-auto-nested-children > .content-item > .nsk-content-meta-info .avatar-wrapper {
-        display: none !important;
+        display: block !important;
+        width: 34px !important;
+        min-width: 34px !important;
+        margin-right: 0 !important;
+      }
+
+      .ns-auto-nested-children > .content-item .avatar-normal {
+        width: 32px !important;
+        height: 32px !important;
+        border-radius: 50% !important;
       }
 
       .ns-auto-nested-children > .content-item .post-content {
-        margin: 0 !important;
+        margin: 0 0 0 44px !important;
         padding: 0 !important;
         color: rgba(36, 42, 52, .92);
-        font-size: 13.5px;
-        line-height: 1.7;
+        font-size: 15px;
+        line-height: 1.75;
         overflow-wrap: anywhere;
       }
 
       .ns-auto-nested-children > .content-item .post-content p {
-        margin: 0 0 4px;
+        margin: 0 0 5px;
       }
 
       .ns-auto-nested-children > .content-item .post-content p:last-child {
@@ -1189,31 +1320,24 @@
       }
 
       .ns-auto-nested-children > .content-item .author-name {
-        color: rgba(36, 42, 52, .78);
-        font-size: 12px;
-        font-weight: 650;
+        color: rgba(36, 42, 52, .80);
+        font-size: 15px;
+        font-weight: 700;
       }
 
       .ns-auto-nested-children > .content-item .ns-auto-user-profile-badge {
-        margin-left: 4px;
-        padding: 0 4px;
-        border-color: rgba(112, 125, 143, .22);
-        background: transparent;
-        color: rgba(75, 88, 108, .58);
-        box-shadow: none;
-        font-size: 10px;
-        font-weight: 600;
-        line-height: 1.35;
-        opacity: .82;
+        margin-left: 6px;
+        padding: 1px 6px;
+        border-color: var(--ns-rank-border);
+        background: var(--ns-rank-bg);
+        color: var(--ns-rank-text);
+        box-shadow: var(--ns-rank-shadow);
+        font-size: 11px;
+        font-weight: 650;
+        line-height: 1.45;
+        opacity: 1;
       }
 
-      .ns-auto-nested-children > .content-item .ns-auto-user-profile-badge:is([data-rank="6"], [data-rank="7"], [data-rank="8"], [data-rank="9"]) {
-        border-color: rgba(180, 83, 9, .32);
-        color: rgba(138, 75, 10, .82);
-      }
-
-      .ns-auto-nested-children > .content-item .role-tag,
-      .ns-auto-nested-children > .content-item .nsk-badge:not(.ns-auto-user-profile-badge),
       .ns-auto-nested-children > .content-item [class*="medal"],
       .ns-auto-nested-children > .content-item [class*="honor"],
       .ns-auto-nested-children > .content-item [class*="decoration"] {
@@ -1223,7 +1347,7 @@
       .ns-auto-nested-children > .content-item .content-info,
       .ns-auto-nested-children > .content-item .floor-link {
         color: rgba(75, 88, 108, .42);
-        font-size: 11px;
+        font-size: 13px;
         opacity: 1;
       }
 
@@ -1232,34 +1356,31 @@
       }
 
       .ns-auto-nested-children > .content-item .comment-menu {
-        display: none !important;
+        display: flex !important;
         justify-content: flex-start !important;
-        margin: 4px 0 0 !important;
-        opacity: .52;
-        transform: scale(.92);
+        margin: 9px 0 0 44px !important;
+        opacity: .44;
+        transform: none;
         transform-origin: left center;
       }
 
       .ns-auto-nested-children > .content-item:hover .comment-menu,
       .ns-auto-nested-children > .content-item:focus-within .comment-menu {
-        display: flex !important;
+        opacity: .72;
       }
 
       .ns-auto-nested-children > .content-item .comment-menu .menu-item {
-        margin-right: 8px !important;
+        margin-right: 14px !important;
       }
 
-      .ns-auto-nested-children > .content-item .post-content a[href*="post-"][href*="#"] {
-        color: rgba(20, 148, 105, .72);
-        font-size: 12px;
-        font-weight: 600;
-        opacity: .82;
-        text-decoration: none;
+      .ns-auto-parent-reference,
+      .ns-auto-parent-reference-line {
+        display: none !important;
       }
 
       .ns-auto-nested-children > .content-item .post-content img:not(.emoji) {
-        max-width: min(160px, 100%) !important;
-        max-height: 140px !important;
+        max-width: min(220px, 100%) !important;
+        max-height: 180px !important;
         object-fit: contain;
       }
 
@@ -1270,22 +1391,40 @@
       }
 
       .ns-auto-nested-children > .content-item .post-content hr,
-      .ns-auto-nested-children > .content-item .post-content hr ~ *,
-      .ns-auto-nested-children > .content-item [class*="signature"],
-      .ns-auto-nested-children > .content-item [class*="Signature"] {
+      .ns-auto-nested-children > .content-item .post-content hr ~ * {
         display: none !important;
       }
 
+      .ns-auto-nested-children > .content-item[data-ns-signature-available="true"] {
+        cursor: pointer;
+      }
+
+      .ns-auto-nested-signature {
+        display: none;
+        margin: 8px 0 0 44px;
+        padding: 7px 10px;
+        border-left: 3px solid rgba(112, 125, 143, .16);
+        border-radius: 0 4px 4px 0;
+        background: rgba(112, 125, 143, .045);
+        color: rgba(75, 88, 108, .76);
+        font-size: 12px;
+        line-height: 1.65;
+        white-space: pre-wrap;
+      }
+
+      .ns-auto-nested-children > .content-item[data-signature-open="true"] > .ns-auto-nested-signature {
+        display: block;
+      }
+
       .ns-auto-nested-children .ns-auto-nested-toggle {
-        margin: 5px 0 0 14px;
+        margin: 7px 0 0 44px;
         opacity: .72;
       }
 
       .ns-auto-nested-children .ns-auto-nested-children {
-        margin: 5px 0 0 14px;
-        padding-left: 10px;
-        border-left-style: dotted;
-        border-left-color: rgba(112, 125, 143, .14);
+        margin: 8px 0 0 44px;
+        padding-left: 22px;
+        border-left: 2px solid rgba(112, 125, 143, .12);
       }
 
       .ns-auto-nested-children .ns-auto-nested-children > .content-item {
@@ -1318,7 +1457,9 @@
       }
 
       .dark-layout .ns-auto-nested-children > .content-item::before {
-        background: rgba(185, 198, 216, .16);
+        border-left-color: rgba(185, 198, 216, .14);
+        border-bottom-color: rgba(185, 198, 216, .14);
+        background: transparent;
       }
 
       .dark-layout .ns-auto-nested-children > .content-item > .nsk-content-meta-info {
@@ -1334,18 +1475,21 @@
       }
 
       .dark-layout .ns-auto-nested-children > .content-item .ns-auto-user-profile-badge {
-        border-color: rgba(185, 198, 216, .20);
-        color: rgba(218, 226, 237, .60);
-      }
-
-      .dark-layout .ns-auto-nested-children > .content-item .ns-auto-user-profile-badge:is([data-rank="6"], [data-rank="7"], [data-rank="8"], [data-rank="9"]) {
-        border-color: rgba(247, 215, 116, .34);
-        color: rgba(247, 215, 116, .78);
+        border-color: var(--ns-rank-border);
+        background: var(--ns-rank-bg);
+        color: var(--ns-rank-text);
+        box-shadow: var(--ns-rank-shadow);
       }
 
       .dark-layout .ns-auto-nested-children > .content-item .content-info,
       .dark-layout .ns-auto-nested-children > .content-item .floor-link {
         color: rgba(218, 226, 237, .42);
+      }
+
+      .dark-layout .ns-auto-nested-signature {
+        border-left-color: rgba(185, 198, 216, .18);
+        background: rgba(185, 198, 216, .06);
+        color: rgba(218, 226, 237, .70);
       }
 
       .dark-layout .ns-auto-user-profile-badge {
@@ -1385,7 +1529,23 @@
         }
 
         .ns-auto-nested-children {
-          padding-left: 10px;
+          padding-left: 20px;
+          border-left-width: 2px;
+        }
+
+        .ns-auto-nested-children > .content-item::before {
+          left: -22px;
+          width: 18px;
+          border-left-width: 2px;
+          border-bottom-width: 2px;
+        }
+
+        .ns-auto-nested-children > .content-item .post-content,
+        .ns-auto-nested-children > .content-item .comment-menu,
+        .ns-auto-nested-signature,
+        .ns-auto-nested-children .ns-auto-nested-toggle,
+        .ns-auto-nested-children .ns-auto-nested-children {
+          margin-left: 42px;
         }
       }
     `;
