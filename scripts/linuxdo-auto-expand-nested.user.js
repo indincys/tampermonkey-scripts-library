@@ -2,9 +2,9 @@
 // @name         LINUX DO Auto Expand Nested Replies
 // @name:zh-CN   LINUX DO 自动展开楼中楼
 // @namespace    https://linux.do/
-// @version      1.3.0
-// @description  Redirect LINUX DO clean topic roots to Discourse nested view, preserve direct post/search/hash links, and auto-expand visible nested replies while reading.
-// @description:zh-CN 将 LINUX DO 干净的普通帖子入口切到嵌套阅读视图，保留回复/通知的具体楼层、查询参数和锚点链接，并在阅读时自动展开可见楼中楼回复。
+// @version      1.4.0
+// @description  Convert ordinary LINUX DO topic clicks to Discourse nested view while leaving notification, reply, search, and hash links to the original router.
+// @description:zh-CN 将 LINUX DO 普通帖子点击切到嵌套阅读视图，同时保留通知、回复、查询参数和锚点链接给原站路由处理。
 // @author       Codex
 // @match        https://linux.do/*
 // @icon         https://www.google.com/s2/favicons?domain=linux.do
@@ -27,6 +27,19 @@
   const clicked = new WeakSet();
   let scheduled = 0;
   let clickLoopRunning = false;
+
+  const SKIP_TOPIC_LINK_CONTEXTS = [
+    "#quick-access-notifications",
+    ".quick-access-panel",
+    ".quick-access-notifications",
+    ".user-menu",
+    ".user-menu-tab",
+    ".user-notifications-list",
+    ".notifications",
+    ".notification",
+    "[data-notification-id]",
+    "[class*='notification']",
+  ].join(", ");
 
   function isLinuxDoTopicHost(url) {
     return url.hostname === "linux.do" || url.hostname === "go.linux.do";
@@ -70,17 +83,6 @@
     url.hostname = "linux.do";
     url.pathname = `/n/topic/${topicId}`;
     return url.href;
-  }
-
-  function redirectIfNeeded() {
-    if (!CONFIG.autoNestedView) {
-      return;
-    }
-
-    const nestedUrl = toNestedTopicUrl(location.href);
-    if (nestedUrl && nestedUrl !== location.href) {
-      location.replace(nestedUrl);
-    }
   }
 
   function fixFlatViewLinks() {
@@ -173,12 +175,13 @@
     const original = history[methodName];
     history[methodName] = function patchedHistoryMethod() {
       const result = original.apply(this, arguments);
-      window.setTimeout(() => {
-        redirectIfNeeded();
-        scheduleExpand();
-      }, 0);
+      window.setTimeout(() => scheduleExpand(), 0);
       return result;
     };
+  }
+
+  function isProtectedTopicLinkContext(link) {
+    return Boolean(link.closest(SKIP_TOPIC_LINK_CONTEXTS));
   }
 
   function shouldOpenInNewTab(event, link) {
@@ -198,12 +201,12 @@
   }
 
   function handleTopicLinkClick(event) {
-    if (event.defaultPrevented || (event.type === "auxclick" && event.button !== 1)) {
+    if (!CONFIG.autoNestedView || event.defaultPrevented || (event.type === "auxclick" && event.button !== 1)) {
       return;
     }
 
     const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
-    if (!link) {
+    if (!link || isProtectedTopicLinkContext(link)) {
       return;
     }
 
@@ -215,8 +218,6 @@
     openNestedUrl(event, link, nestedUrl);
   }
 
-  redirectIfNeeded();
-
   document.addEventListener("click", handleTopicLinkClick, true);
   document.addEventListener("auxclick", handleTopicLinkClick, true);
 
@@ -224,7 +225,6 @@
   patchHistory("replaceState");
 
   window.addEventListener("popstate", () => {
-    redirectIfNeeded();
     scheduleExpand();
   });
   window.addEventListener("scroll", () => scheduleExpand(), { passive: true });
