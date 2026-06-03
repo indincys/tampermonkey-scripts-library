@@ -169,7 +169,13 @@ function createHarness(initialUrl = "https://linux.do/") {
 
 {
   const app = createHarness("https://linux.do/t/topic/2045356");
-  assert.equal(app.location.href, "https://linux.do/t/topic/2045356");
+  assert.equal(app.location.href, "https://linux.do/n/topic/2045356");
+  assert.deepEqual(app.replaceCalls, ["https://linux.do/n/topic/2045356"]);
+}
+
+{
+  const app = createHarness("https://linux.do/t/topic/2045356?post_number=2");
+  assert.equal(app.location.href, "https://linux.do/t/topic/2045356?post_number=2");
   assert.deepEqual(app.replaceCalls, []);
 }
 

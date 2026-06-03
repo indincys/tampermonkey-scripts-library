@@ -2,9 +2,9 @@
 // @name         LINUX DO Auto Expand Nested Replies
 // @name:zh-CN   LINUX DO 自动展开楼中楼
 // @namespace    https://linux.do/
-// @version      1.4.0
-// @description  Convert ordinary LINUX DO topic clicks to Discourse nested view while leaving notification, reply, search, and hash links to the original router.
-// @description:zh-CN 将 LINUX DO 普通帖子点击切到嵌套阅读视图，同时保留通知、回复、查询参数和锚点链接给原站路由处理。
+// @version      1.5.0
+// @description  Redirect clean LINUX DO topic loads and ordinary topic clicks to nested view while leaving notification, reply, search, and hash links to the original router.
+// @description:zh-CN 将 LINUX DO 干净主题加载和普通帖子点击切到嵌套阅读视图，同时保留通知、回复、查询参数和锚点链接给原站路由处理。
 // @author       Codex
 // @match        https://linux.do/*
 // @icon         https://www.google.com/s2/favicons?domain=linux.do
@@ -83,6 +83,17 @@
     url.hostname = "linux.do";
     url.pathname = `/n/topic/${topicId}`;
     return url.href;
+  }
+
+  function redirectInitialTopicLoad() {
+    if (!CONFIG.autoNestedView) {
+      return;
+    }
+
+    const nestedUrl = toNestedTopicUrl(location.href);
+    if (nestedUrl && nestedUrl !== location.href) {
+      location.replace(nestedUrl);
+    }
   }
 
   function fixFlatViewLinks() {
@@ -217,6 +228,8 @@
 
     openNestedUrl(event, link, nestedUrl);
   }
+
+  redirectInitialTopicLoad();
 
   document.addEventListener("click", handleTopicLinkClick, true);
   document.addEventListener("auxclick", handleTopicLinkClick, true);
