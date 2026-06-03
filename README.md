@@ -10,7 +10,7 @@
 ## Scripts
 
 - `scripts/linuxdo-auto-expand-nested.user.js`
-  - 功能：LINUX DO 帖子自动切换嵌套阅读视图，支持 Cmd/Ctrl/中键新标签页打开，并自动展开可见楼中楼回复
+  - 功能：LINUX DO 普通帖子入口自动切换嵌套阅读视图，保留通知/回复的具体楼层链接，支持 Cmd/Ctrl/中键新标签页打开，并自动展开可见楼中楼回复
 
 - `scripts/idcflare-auto-expand-nested.user.js`
   - 功能：IDC Flare 帖子自动切换嵌套阅读视图，支持 Cmd/Ctrl/中键新标签页打开，并自动展开可见楼中楼回复

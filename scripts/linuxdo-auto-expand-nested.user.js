@@ -2,9 +2,9 @@
 // @name         LINUX DO Auto Expand Nested Replies
 // @name:zh-CN   LINUX DO 自动展开楼中楼
 // @namespace    https://linux.do/
-// @version      1.1.0
-// @description  Redirect LINUX DO topics to Discourse nested view, preserve Cmd/Ctrl new-tab opening, and auto-expand visible nested replies while reading.
-// @description:zh-CN 将 LINUX DO 帖子切到嵌套阅读视图，保留 Cmd/Ctrl 新标签页打开，并在阅读时自动展开可见楼中楼回复。
+// @version      1.2.0
+// @description  Redirect LINUX DO topic roots to Discourse nested view, preserve direct post links, and auto-expand visible nested replies while reading.
+// @description:zh-CN 将 LINUX DO 普通帖子入口切到嵌套阅读视图，保留回复/通知的具体楼层链接，并在阅读时自动展开可见楼中楼回复。
 // @author       Codex
 // @match        https://linux.do/*
 // @icon         https://www.google.com/s2/favicons?domain=linux.do
@@ -58,9 +58,13 @@
 
     const topicId = match[1];
     const postNumber = match[2];
+    if (postNumber && postNumber !== "1") {
+      return null;
+    }
+
     url.protocol = "https:";
     url.hostname = "linux.do";
-    url.pathname = `/n/topic/${topicId}${postNumber && postNumber !== "1" ? `/${postNumber}` : ""}`;
+    url.pathname = `/n/topic/${topicId}`;
     return url.href;
   }
 
