@@ -2,9 +2,9 @@
 // @name         LINUX DO Auto Expand Nested Replies
 // @name:zh-CN   LINUX DO 自动展开楼中楼
 // @namespace    https://linux.do/
-// @version      1.2.0
-// @description  Redirect LINUX DO topic roots to Discourse nested view, preserve direct post links, and auto-expand visible nested replies while reading.
-// @description:zh-CN 将 LINUX DO 普通帖子入口切到嵌套阅读视图，保留回复/通知的具体楼层链接，并在阅读时自动展开可见楼中楼回复。
+// @version      1.3.0
+// @description  Redirect LINUX DO clean topic roots to Discourse nested view, preserve direct post/search/hash links, and auto-expand visible nested replies while reading.
+// @description:zh-CN 将 LINUX DO 干净的普通帖子入口切到嵌套阅读视图，保留回复/通知的具体楼层、查询参数和锚点链接，并在阅读时自动展开可见楼中楼回复。
 // @author       Codex
 // @match        https://linux.do/*
 // @icon         https://www.google.com/s2/favicons?domain=linux.do
@@ -36,6 +36,10 @@
     return url.searchParams.get("flat") === "1";
   }
 
+  function hasSearchOrHash(url) {
+    return url.search !== "" || url.hash !== "";
+  }
+
   function toNestedTopicUrl(rawUrl) {
     let url;
     try {
@@ -44,7 +48,7 @@
       return null;
     }
 
-    if (!isLinuxDoTopicHost(url) || shouldSkipTopicRedirect(url)) {
+    if (!isLinuxDoTopicHost(url) || shouldSkipTopicRedirect(url) || hasSearchOrHash(url)) {
       return null;
     }
 
