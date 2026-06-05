@@ -2,7 +2,7 @@
 // @name         NodeSeek Auto Nested Replies
 // @name:zh-CN   NodeSeek 自动楼中楼
 // @namespace    https://www.nodeseek.com/
-// @version      1.11.0
+// @version      1.11.1
 // @description  Turn visible NodeSeek reply references into Linux.do-like nested threads, show user rank/join age/signatures, auto-load next pages, and check in daily with a visible reminder.
 // @description:zh-CN 在 NodeSeek 自动签到并提醒；帖子页以类似 Linux.do 的样式整理楼中楼、展示用户等级/加入天数/签名，并自动加载下一页评论。
 // @author       Codex
@@ -1421,31 +1421,15 @@
       }
 
       .ns-auto-nested-children {
-        --ns-tree-line: rgba(112, 125, 143, .20);
-        --ns-tree-line-strong: rgba(112, 125, 143, .32);
-        --ns-tree-surface: #fff;
         position: relative;
-        margin: 8px 0 0 44px;
-        padding: 0 0 0 18px;
+        margin: 7px 0 0 34px;
+        padding: 0 0 0 14px;
         border-left: 0;
         list-style: none;
       }
 
       .ns-auto-nested-children::before {
-        content: "";
-        position: absolute;
-        left: 0;
-        top: 4px;
-        bottom: 23px;
-        width: 2px;
-        border-radius: 999px;
-        background: linear-gradient(
-          to bottom,
-          transparent,
-          var(--ns-tree-line) 12px,
-          var(--ns-tree-line) calc(100% - 8px),
-          transparent
-        );
+        content: none;
       }
 
       .ns-auto-nested-children[data-collapsed="true"] {
@@ -1466,26 +1450,18 @@
       .ns-auto-nested-children > .content-item::before {
         content: "";
         position: absolute;
-        left: -18px;
-        top: 21px;
-        width: 18px;
-        height: 14px;
-        border-left: 2px solid var(--ns-tree-line);
-        border-bottom: 2px solid var(--ns-tree-line-strong);
+        left: -17px;
+        top: 23px;
+        width: 14px;
+        height: 18px;
+        border-left: 2px solid rgba(112, 125, 143, .16);
+        border-bottom: 2px solid rgba(112, 125, 143, .16);
         border-bottom-left-radius: 12px;
         background: transparent;
       }
 
       .ns-auto-nested-children > .content-item::after {
-        content: "";
-        position: absolute;
-        left: -3px;
-        top: 33px;
-        width: 5px;
-        height: 5px;
-        border-radius: 999px;
-        background: var(--ns-tree-line-strong);
-        box-shadow: 0 0 0 3px var(--ns-tree-surface);
+        content: none;
       }
 
       .ns-auto-nested-children > .content-item > .nsk-content-meta-info {
@@ -1626,8 +1602,8 @@
       }
 
       .ns-auto-nested-children .ns-auto-nested-children {
-        margin: 5px 0 0 12px;
-        padding-left: 14px;
+        margin: 4px 0 0 10px;
+        padding-left: 8px;
         border-left: 0;
       }
 
@@ -1637,17 +1613,13 @@
       }
 
       .ns-auto-nested-children .ns-auto-nested-children > .content-item::before {
-        left: -14px;
-        width: 14px;
-      }
-
-      .ns-auto-nested-children .ns-auto-nested-children > .content-item::after {
-        left: -3px;
+        left: -11px;
+        width: 8px;
       }
 
       .ns-auto-nested-children .ns-auto-nested-children .ns-auto-nested-children {
-        margin-left: 10px;
-        padding-left: 12px;
+        margin-left: 8px;
+        padding-left: 7px;
       }
 
       .ns-auto-nested-parent > .floor-link-wrapper .floor-link::after {
@@ -1666,9 +1638,6 @@
       }
 
       .dark-layout .ns-auto-nested-children {
-        --ns-tree-line: rgba(185, 198, 216, .18);
-        --ns-tree-line-strong: rgba(185, 198, 216, .30);
-        --ns-tree-surface: #161c24;
         border-left-color: transparent;
       }
 
@@ -1678,14 +1647,13 @@
       }
 
       .dark-layout .ns-auto-nested-children > .content-item::before {
-        border-left-color: var(--ns-tree-line);
-        border-bottom-color: var(--ns-tree-line-strong);
+        border-left-color: rgba(185, 198, 216, .14);
+        border-bottom-color: rgba(185, 198, 216, .14);
         background: transparent;
       }
 
       .dark-layout .ns-auto-nested-children > .content-item::after {
-        background: var(--ns-tree-line-strong);
-        box-shadow: 0 0 0 3px var(--ns-tree-surface);
+        content: none;
       }
 
       .dark-layout .ns-auto-nested-children > .content-item > .nsk-content-meta-info {
@@ -1770,20 +1738,18 @@
         }
 
         .ns-auto-nested-children {
-          padding-left: 12px;
+          padding-left: 10px;
         }
 
         .ns-auto-nested-children > .content-item::before {
           left: -12px;
-          width: 12px;
+          width: 9px;
           border-left-width: 2px;
           border-bottom-width: 2px;
         }
 
         .ns-auto-nested-children > .content-item::after {
-          left: -3px;
-          width: 5px;
-          height: 5px;
+          content: none;
         }
 
         .ns-auto-nested-children > .content-item .post-content,
@@ -1795,13 +1761,13 @@
         }
 
         .ns-auto-nested-children .ns-auto-nested-children {
-          margin-left: 7px;
-          padding-left: 10px;
+          margin-left: 6px;
+          padding-left: 7px;
         }
 
         .ns-auto-nested-children .ns-auto-nested-children .ns-auto-nested-children {
-          margin-left: 6px;
-          padding-left: 9px;
+          margin-left: 5px;
+          padding-left: 6px;
         }
       }
     `;

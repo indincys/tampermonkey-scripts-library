@@ -16,7 +16,7 @@
   - 功能：IDC Flare 帖子自动切换嵌套阅读视图，支持 Cmd/Ctrl/中键新标签页打开，并自动展开可见楼中楼回复
 
 - `scripts/nodeseek-auto-nested-replies.user.js`
-  - 功能：NodeSeek 自动签到提醒、Linux.do 风格楼中楼树线整理、用户等级/加入天数/签名展示、评论自动翻页并隐藏原分页控件
+  - 功能：NodeSeek 自动签到提醒、Linux.do 风格楼中楼局部父子连接、用户等级/加入天数/签名展示、评论自动翻页并隐藏原分页控件
 
 - `scripts/视频快捷键精简版-Enter-ShiftEnter-ZXC.user.js`
   - 功能：`Enter` 全屏自动播放、`Shift+Enter` 网页全屏、`Z/X/C` 倍速控制
