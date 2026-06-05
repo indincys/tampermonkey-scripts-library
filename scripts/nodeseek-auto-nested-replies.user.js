@@ -2,12 +2,14 @@
 // @name         NodeSeek Auto Nested Replies
 // @name:zh-CN   NodeSeek 自动楼中楼
 // @namespace    https://www.nodeseek.com/
-// @version      1.10.0
-// @description  Turn visible NodeSeek reply references into Linux.do-like nested threads, show user rank/join age/signatures, auto-load next pages, and check in daily.
-// @description:zh-CN 在 NodeSeek 自动签到；帖子页以类似 Linux.do 的样式整理楼中楼、展示用户等级/加入天数/签名，并自动加载下一页评论。
+// @version      1.11.0
+// @description  Turn visible NodeSeek reply references into Linux.do-like nested threads, show user rank/join age/signatures, auto-load next pages, and check in daily with a visible reminder.
+// @description:zh-CN 在 NodeSeek 自动签到并提醒；帖子页以类似 Linux.do 的样式整理楼中楼、展示用户等级/加入天数/签名，并自动加载下一页评论。
 // @author       Codex
 // @match        https://www.nodeseek.com/*
 // @icon         https://www.google.com/s2/favicons?domain=nodeseek.com
+// @updateURL    https://raw.githubusercontent.com/indincys/tampermonkey-scripts-library/main/scripts/nodeseek-auto-nested-replies.user.js
+// @downloadURL  https://raw.githubusercontent.com/indincys/tampermonkey-scripts-library/main/scripts/nodeseek-auto-nested-replies.user.js
 // @run-at       document-idle
 // @grant        none
 // @license      MIT
@@ -32,7 +34,7 @@
     checkinDelayMs: 2600,
     checkinPendingBackoffMs: 25 * 1000,
     checkinFailureBackoffMs: 30 * 60 * 1000,
-    checkinToastMs: 4200,
+    checkinToastMs: 5600,
   };
 
   let scheduled = 0;
@@ -164,6 +166,11 @@
     renderAutoPageStatus();
   }
 
+  function updateAutoPageRootClass() {
+    const active = Boolean(topicPageFromPath() && commentsList());
+    document.documentElement.classList.toggle("ns-auto-page-active", active);
+  }
+
   function findNextPageUrl(sourceDoc = document, baseUrl = location.href) {
     const state = getAutoPageState();
     const sourceInfo = postUrlInfo(baseUrl);
@@ -227,6 +234,7 @@
   }
 
   function renderAutoPageStatus() {
+    updateAutoPageRootClass();
     const state = getAutoPageState();
     const status = ensureAutoPageStatus();
     if (!status) {
@@ -470,8 +478,18 @@
     const inspectText = `${message} ${String(text || "").slice(0, 360)}`.toLowerCase();
     const already = /已签到|已经签到|今日.*签到|already\s*signed|checked\s*in|signed\s*in/.test(inspectText);
     const loginRequired = /未登录|请先登录|登录后|user\s*not\s*found|login|unauthorized|forbidden/.test(inspectText);
+    const apiSuccess =
+      payload?.success === true ||
+      payload?.ok === true ||
+      payload?.code === 0 ||
+      payload?.code === 200 ||
+      payload?.status === 0 ||
+      payload?.status === 200 ||
+      payload?.status === true ||
+      payload?.status === "success";
+    const successText = /签到成功|打卡成功|签到.*成功|获得.*?(鸡腿|积分|经验|奖励)|successfully|success/.test(inspectText);
 
-    if (payload?.success === true) {
+    if (apiSuccess || (statusCode >= 200 && statusCode < 300 && successText && !loginRequired)) {
       return {
         ok: true,
         status: already ? "already" : "success",
@@ -503,7 +521,12 @@
   }
 
   function showCheckinToast(message, tone = "success") {
-    if (!message || !document.body) {
+    if (!message) {
+      return;
+    }
+
+    if (!document.body) {
+      window.setTimeout(() => showCheckinToast(message, tone), 200);
       return;
     }
 
@@ -529,6 +552,30 @@
         }
       }, 180);
     }, CONFIG.checkinToastMs);
+  }
+
+  function notifyCheckinResult(result, today) {
+    if (!result?.ok) {
+      return;
+    }
+
+    const state = readCheckinState();
+    if (state.notifiedDate === today && state.notifiedStatus === result.status) {
+      return;
+    }
+
+    const label = result.status === "already" ? "NodeSeek 今日已签到" : "NodeSeek 签到成功";
+    const duplicate =
+      result.status === "already"
+        ? /已签到|已经签到/.test(result.message)
+        : /签到成功|打卡成功|success/i.test(result.message);
+    const suffix = result.message && !duplicate ? `：${result.message}` : "";
+    showCheckinToast(`${label}${suffix}`, result.status === "already" ? "already" : "success");
+    writeCheckinState({
+      notifiedAt: Date.now(),
+      notifiedDate: today,
+      notifiedStatus: result.status,
+    });
   }
 
   async function runAutoCheckin() {
@@ -567,10 +614,7 @@
       });
 
       if (result.ok) {
-        const label = result.status === "already" ? "NodeSeek 今日已签到" : "NodeSeek 签到成功";
-        const duplicate = result.status === "already" ? /已签到|已经签到/.test(result.message) : /签到成功|success/i.test(result.message);
-        const suffix = result.message && !duplicate ? `：${result.message}` : "";
-        showCheckinToast(`${label}${suffix}`, "success");
+        notifyCheckinResult(result, today);
       } else if (result.status !== "login") {
         console.debug("[NodeSeek Auto Nested Replies] auto check-in skipped:", result.message);
       }
@@ -1210,13 +1254,21 @@
         color: #b42318;
       }
 
+      html.ns-auto-page-active .comment-container .nsk-pager,
+      html.ns-auto-page-active .comment-container .pager,
+      html.ns-auto-page-active .comment-container .pagination,
+      html.ns-auto-page-active .comment-container [class*="pagination"],
+      html.ns-auto-page-active .comment-container [class*="pager"] {
+        display: none !important;
+      }
+
       .ns-auto-checkin-toast {
         position: fixed;
         right: 16px;
-        bottom: 18px;
+        top: 18px;
         z-index: 2147483647;
         max-width: min(360px, calc(100vw - 32px));
-        padding: 8px 11px;
+        padding: 9px 12px;
         border: 1px solid rgba(20, 148, 105, .26);
         border-radius: 6px;
         background: rgba(255, 255, 255, .96);
@@ -1229,6 +1281,28 @@
         transform: translateY(8px);
         transition: opacity .16s ease, transform .16s ease;
         pointer-events: none;
+      }
+
+      .ns-auto-checkin-toast::before {
+        content: "签到";
+        display: inline-flex;
+        margin-right: 7px;
+        padding: 0 5px;
+        border-radius: 999px;
+        background: rgba(20, 148, 105, .12);
+        color: #087451;
+        font-size: 11px;
+        line-height: 1.55;
+      }
+
+      .ns-auto-checkin-toast[data-tone="already"] {
+        border-color: rgba(37, 99, 235, .22);
+        color: #1d4ed8;
+      }
+
+      .ns-auto-checkin-toast[data-tone="already"]::before {
+        background: rgba(37, 99, 235, .11);
+        color: #1d4ed8;
       }
 
       .ns-auto-checkin-toast[data-visible="true"] {
@@ -1347,10 +1421,31 @@
       }
 
       .ns-auto-nested-children {
-        margin: 7px 0 0 34px;
-        padding: 0 0 0 14px;
+        --ns-tree-line: rgba(112, 125, 143, .20);
+        --ns-tree-line-strong: rgba(112, 125, 143, .32);
+        --ns-tree-surface: #fff;
+        position: relative;
+        margin: 8px 0 0 44px;
+        padding: 0 0 0 18px;
         border-left: 0;
         list-style: none;
+      }
+
+      .ns-auto-nested-children::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        top: 4px;
+        bottom: 23px;
+        width: 2px;
+        border-radius: 999px;
+        background: linear-gradient(
+          to bottom,
+          transparent,
+          var(--ns-tree-line) 12px,
+          var(--ns-tree-line) calc(100% - 8px),
+          transparent
+        );
       }
 
       .ns-auto-nested-children[data-collapsed="true"] {
@@ -1371,14 +1466,26 @@
       .ns-auto-nested-children > .content-item::before {
         content: "";
         position: absolute;
-        left: -17px;
-        top: 23px;
-        width: 14px;
-        height: 18px;
-        border-left: 3px solid rgba(112, 125, 143, .12);
-        border-bottom: 3px solid rgba(112, 125, 143, .12);
+        left: -18px;
+        top: 21px;
+        width: 18px;
+        height: 14px;
+        border-left: 2px solid var(--ns-tree-line);
+        border-bottom: 2px solid var(--ns-tree-line-strong);
         border-bottom-left-radius: 12px;
         background: transparent;
+      }
+
+      .ns-auto-nested-children > .content-item::after {
+        content: "";
+        position: absolute;
+        left: -3px;
+        top: 33px;
+        width: 5px;
+        height: 5px;
+        border-radius: 999px;
+        background: var(--ns-tree-line-strong);
+        box-shadow: 0 0 0 3px var(--ns-tree-surface);
       }
 
       .ns-auto-nested-children > .content-item > .nsk-content-meta-info {
@@ -1519,8 +1626,8 @@
       }
 
       .ns-auto-nested-children .ns-auto-nested-children {
-        margin: 4px 0 0 10px;
-        padding-left: 8px;
+        margin: 5px 0 0 12px;
+        padding-left: 14px;
         border-left: 0;
       }
 
@@ -1530,13 +1637,17 @@
       }
 
       .ns-auto-nested-children .ns-auto-nested-children > .content-item::before {
-        left: -11px;
-        width: 8px;
+        left: -14px;
+        width: 14px;
+      }
+
+      .ns-auto-nested-children .ns-auto-nested-children > .content-item::after {
+        left: -3px;
       }
 
       .ns-auto-nested-children .ns-auto-nested-children .ns-auto-nested-children {
-        margin-left: 8px;
-        padding-left: 7px;
+        margin-left: 10px;
+        padding-left: 12px;
       }
 
       .ns-auto-nested-parent > .floor-link-wrapper .floor-link::after {
@@ -1555,6 +1666,9 @@
       }
 
       .dark-layout .ns-auto-nested-children {
+        --ns-tree-line: rgba(185, 198, 216, .18);
+        --ns-tree-line-strong: rgba(185, 198, 216, .30);
+        --ns-tree-surface: #161c24;
         border-left-color: transparent;
       }
 
@@ -1564,9 +1678,14 @@
       }
 
       .dark-layout .ns-auto-nested-children > .content-item::before {
-        border-left-color: rgba(185, 198, 216, .14);
-        border-bottom-color: rgba(185, 198, 216, .14);
+        border-left-color: var(--ns-tree-line);
+        border-bottom-color: var(--ns-tree-line-strong);
         background: transparent;
+      }
+
+      .dark-layout .ns-auto-nested-children > .content-item::after {
+        background: var(--ns-tree-line-strong);
+        box-shadow: 0 0 0 3px var(--ns-tree-surface);
       }
 
       .dark-layout .ns-auto-nested-children > .content-item > .nsk-content-meta-info {
@@ -1629,6 +1748,21 @@
         box-shadow: 0 8px 24px rgba(0, 0, 0, .30);
       }
 
+      .dark-layout .ns-auto-checkin-toast::before {
+        background: rgba(20, 148, 105, .16);
+        color: #6ee7b7;
+      }
+
+      .dark-layout .ns-auto-checkin-toast[data-tone="already"] {
+        border-color: rgba(96, 165, 250, .28);
+        color: #93c5fd;
+      }
+
+      .dark-layout .ns-auto-checkin-toast[data-tone="already"]::before {
+        background: rgba(96, 165, 250, .16);
+        color: #93c5fd;
+      }
+
       @media (max-width: 720px) {
         .ns-auto-nested-toggle,
         .ns-auto-nested-children {
@@ -1636,14 +1770,20 @@
         }
 
         .ns-auto-nested-children {
-          padding-left: 10px;
+          padding-left: 12px;
         }
 
         .ns-auto-nested-children > .content-item::before {
           left: -12px;
-          width: 9px;
+          width: 12px;
           border-left-width: 2px;
           border-bottom-width: 2px;
+        }
+
+        .ns-auto-nested-children > .content-item::after {
+          left: -3px;
+          width: 5px;
+          height: 5px;
         }
 
         .ns-auto-nested-children > .content-item .post-content,
@@ -1655,13 +1795,13 @@
         }
 
         .ns-auto-nested-children .ns-auto-nested-children {
-          margin-left: 6px;
-          padding-left: 7px;
+          margin-left: 7px;
+          padding-left: 10px;
         }
 
         .ns-auto-nested-children .ns-auto-nested-children .ns-auto-nested-children {
-          margin-left: 5px;
-          padding-left: 6px;
+          margin-left: 6px;
+          padding-left: 9px;
         }
       }
     `;
